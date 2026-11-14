@@ -363,9 +363,12 @@ function Sidebar({ view, setView, setlistCount }: { view: ViewName; setView: (vi
 function Topbar({ setView, auth, share }: { setView: (view: ViewName) => void; auth: AuthState; share: ShareAccessState }) {
   return (
     <header className="topbar">
-      <div>
-        <p className="eyebrow">PPC WORSHIP TEAM</p>
-        <h1>PPC 敬拜團歌單</h1>
+      <div className="topbar-identity">
+        <img className="topbar-logo" src={`${import.meta.env.BASE_URL}ppc-worship-logo.png`} alt="PPC 敬拜團" />
+        <div>
+          <p className="eyebrow">PPC WORSHIP TEAM</p>
+          <h1>PPC 敬拜團歌單</h1>
+        </div>
       </div>
       <div className="topbar-actions">
         <button type="button" className="button button-primary" onClick={() => setView('admin')}>
