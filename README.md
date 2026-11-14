@@ -13,7 +13,8 @@ GitHub Pages 備用網址：<https://southsidetw2023-cpu.github.io/band-score-li
 - 依歌名、出處、語言、年份搜尋
 - 讚美／敬拜分類與歌譜狀態篩選
 - 歌曲詳細資料與原始資源連結
-- 全部歌曲皆可進入現場模式、設定各自演出 Key、開啟原始歌譜並依歌單切換
+- 全部歌曲皆可進入現場模式、設定各自演出 Key，並依歌單切換
+- 177 份 Google Drive PDF 可直接在現場模式內閱讀、縮放與上下捲動
 - 〈How Much Do I Love You〉具備結構化現場和弦譜、即時轉調與 Key 記憶
 - 本週排練歌單（保存在瀏覽器本機）
 - 管理者匯入、權限與批次上傳流程預覽
@@ -25,7 +26,7 @@ GitHub Pages 備用網址：<https://southsidetw2023-cpu.github.io/band-score-li
 - Google 登入與管理者核准
 - 私有檔案儲存與 Google Drive 搬移
 - 團隊即時同步、共用／個人筆記
-- PDF 閱讀器與外部歌譜檔案離線快取
+- 外部歌譜 PDF 的完整離線快取
 
 ## 本機執行
 

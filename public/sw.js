@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ensemble-live-v3'
+const CACHE_NAME = 'ensemble-live-v4'
 const scopeRoot = new URL('./', self.registration.scope).href
 
 async function primeAppShell() {

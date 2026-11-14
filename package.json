@@ -17,6 +17,7 @@
     "@vitejs/plugin-react": "latest",
     "chordsheetjs": "^18.0.0",
     "lucide-react": "latest",
+    "pdfjs-dist": "^5.4.394",
     "react": "latest",
     "react-dom": "latest",
     "vite": "latest"

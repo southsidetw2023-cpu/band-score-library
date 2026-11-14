@@ -1,5 +1,6 @@
 import { StrictMode, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist'
 import {
   BookOpen,
   CalendarDays,
@@ -51,10 +52,22 @@ if (previewTheme && previewThemes.has(previewTheme)) {
 
 const songs = (songsData as Song[]).sort((a, b) => a.title.localeCompare(b.title, 'zh-Hant'))
 const chromaticKeys = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'] as const
+const pdfWorkerUrl = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
 interface PerformanceSession {
   songs: Song[]
   initialSongId: string
+}
+
+function getDriveFileId(url: string) {
+  return url.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i)?.[1] ?? ''
+}
+
+function getInlineScoreUrl(url: string) {
+  const fileId = getDriveFileId(url)
+  return fileId
+    ? `${import.meta.env.BASE_URL}api/score?file=${encodeURIComponent(fileId)}`
+    : ''
 }
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
@@ -687,6 +700,117 @@ function markRhythmRows(html: string) {
   return container.innerHTML
 }
 
+function PdfPage({ page, zoom, pageNumber }: { page: PDFPageProxy; zoom: number; pageNumber: number }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const renderTaskRef = useRef<RenderTask | null>(null)
+  const [availableWidth, setAvailableWidth] = useState(0)
+
+  useLayoutEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const updateWidth = () => setAvailableWidth(container.clientWidth)
+    updateWidth()
+    const observer = new ResizeObserver(updateWidth)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || availableWidth <= 0) return
+
+    renderTaskRef.current?.cancel()
+    const unscaledViewport = page.getViewport({ scale: 1 })
+    const cssScale = (availableWidth / unscaledViewport.width) * zoom
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2)
+    const renderViewport = page.getViewport({ scale: cssScale * pixelRatio })
+    const cssWidth = unscaledViewport.width * cssScale
+    const cssHeight = unscaledViewport.height * cssScale
+
+    canvas.width = Math.ceil(renderViewport.width)
+    canvas.height = Math.ceil(renderViewport.height)
+    canvas.style.width = `${cssWidth}px`
+    canvas.style.height = `${cssHeight}px`
+
+    const context = canvas.getContext('2d', { alpha: false })
+    if (!context) return
+
+    const task = page.render({ canvas, canvasContext: context, viewport: renderViewport })
+    renderTaskRef.current = task
+    void task.promise.catch((error: unknown) => {
+      if (!(error instanceof Error) || error.name !== 'RenderingCancelledException') console.error(error)
+    })
+
+    return () => {
+      task.cancel()
+      if (renderTaskRef.current === task) renderTaskRef.current = null
+    }
+  }, [availableWidth, page, zoom])
+
+  return (
+    <div ref={containerRef} className="performance-pdf-page">
+      <canvas ref={canvasRef} aria-label={`歌譜第 ${pageNumber} 頁`} />
+    </div>
+  )
+}
+
+function PdfScoreViewer({ url, title, zoom }: { url: string; title: string; zoom: number }) {
+  const [document, setDocument] = useState<PDFDocumentProxy | null>(null)
+  const [pages, setPages] = useState<PDFPageProxy[]>([])
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    let loadedDocument: PDFDocumentProxy | null = null
+
+    setDocument(null)
+    setPages([])
+    setError('')
+
+    void import('pdfjs-dist').then(async (pdfjs) => {
+      pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+      const loadingTask = pdfjs.getDocument({ url })
+      loadedDocument = await loadingTask.promise
+      const nextPages = await Promise.all(
+        Array.from({ length: loadedDocument.numPages }, (_, index) => loadedDocument!.getPage(index + 1)),
+      )
+      if (!cancelled) {
+        setDocument(loadedDocument)
+        setPages(nextPages)
+      }
+    }).catch((reason: unknown) => {
+      if (!cancelled) setError(reason instanceof Error ? reason.message : '歌譜載入失敗')
+    })
+
+    return () => {
+      cancelled = true
+      if (loadedDocument) void loadedDocument.destroy()
+    }
+  }, [url])
+
+  if (error) {
+    return (
+      <div className="performance-pdf-error" role="alert">
+        <FileMusic size={36} aria-hidden="true" />
+        <strong>無法在現場模式載入歌譜</strong>
+        <span>請改用下方的原始連結開啟。</span>
+      </div>
+    )
+  }
+
+  if (!document || pages.length === 0) {
+    return <div className="performance-loading" role="status"><LoaderCircle size={24} className="spin" aria-hidden="true" />正在載入〈{title}〉歌譜</div>
+  }
+
+  return (
+    <section className="performance-pdf-document" aria-label={`${title} 原始歌譜，共 ${pages.length} 頁`}>
+      {pages.map((page, index) => <PdfPage key={page.pageNumber} page={page} zoom={zoom} pageNumber={index + 1} />)}
+    </section>
+  )
+}
+
 function PerformanceDialog({ session, onClose }: { session: PerformanceSession | null; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
@@ -700,6 +824,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
   const songs = session?.songs ?? []
   const song = songs[activeIndex] ?? null
   const chordSheet = song ? getChordSheet(song.id) : null
+  const inlineScoreUrl = song ? getInlineScoreUrl(song.scoreUrl) : ''
   const [offset, setOffset] = useState(0)
   const [performanceKey, setPerformanceKey] = useState('')
   const [fontScale, setFontScale] = useState(() => Number(window.localStorage.getItem('ensemble-live-font-scale')) || 1)
@@ -906,10 +1031,10 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
                   </label>
                 )}
                 <button type="button" className="performance-tool" onClick={() => updateOffset(0)} disabled={!chordSheet || offset === 0}><RotateCcw size={18} aria-hidden="true" /><span>恢復原調</span></button>
-                <div className="font-stepper" aria-label="調整和弦譜字體大小">
-                  <button type="button" onClick={() => updateFontScale(fontScale - 0.1)} disabled={fontScale <= 0.5} aria-label="縮小字體"><ZoomOut size={19} /></button>
+                <div className="font-stepper" aria-label={chordSheet ? '調整和弦譜字體大小' : '調整歌譜大小'}>
+                  <button type="button" onClick={() => updateFontScale(fontScale - 0.1)} disabled={fontScale <= 0.5} aria-label={chordSheet ? '縮小字體' : '縮小歌譜'}><ZoomOut size={19} /></button>
                   <span>{Math.round(fontScale * 100)}%</span>
-                  <button type="button" onClick={() => updateFontScale(fontScale + 0.1)} disabled={fontScale >= 1.4} aria-label="放大字體"><ZoomIn size={19} /></button>
+                  <button type="button" onClick={() => updateFontScale(fontScale + 0.1)} disabled={fontScale >= 1.4} aria-label={chordSheet ? '放大字體' : '放大歌譜'}><ZoomIn size={19} /></button>
                 </div>
               </div>
             </div>
@@ -920,10 +1045,15 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
               ? visibleSheet
                 ? <div className="performance-sheet" dangerouslySetInnerHTML={{ __html: visibleSheet }} />
                 : <div className="performance-loading"><LoaderCircle size={24} className="spin" aria-hidden="true" />正在準備和弦譜</div>
+              : inlineScoreUrl
+                ? <div className="performance-pdf-shell">
+                    <a className="performance-original-link" href={song.scoreUrl} target="_blank" rel="noreferrer">另開原始歌譜<ExternalLink size={16} aria-hidden="true" /></a>
+                    <PdfScoreViewer key={song.id} url={inlineScoreUrl} title={song.title} zoom={fontScale} />
+                  </div>
               : <section className="performance-missing">
                   <FileMusic size={38} aria-hidden="true" />
-                  <h3>{song.scoreUrl ? '使用原始歌譜演出' : '這首歌尚未提供歌譜'}</h3>
-                  <p>可在上方設定並記住演出 Key。原始檔不會自動轉調；仍可左右滑動切換歌單。</p>
+                  <h3>{song.scoreUrl ? '這份歌譜無法直接顯示' : '這首歌尚未提供歌譜'}</h3>
+                  <p>{song.scoreUrl ? '目前連結不是可直接讀取的 PDF，請用原始連結開啟。' : '資料庫內沒有歌譜檔案，仍可設定並記住演出 Key。'}</p>
                   <div className="performance-resource-actions">
                     {song.scoreUrl && <a className="button button-primary" href={song.scoreUrl} target="_blank" rel="noreferrer">開啟原始歌譜<ExternalLink size={17} aria-hidden="true" /></a>}
                     {song.lyricsUrl && <a className="button button-secondary" href={song.lyricsUrl} target="_blank" rel="noreferrer">開啟歌詞<ExternalLink size={17} aria-hidden="true" /></a>}

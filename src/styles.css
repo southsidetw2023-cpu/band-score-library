@@ -396,6 +396,16 @@ button:active:not(:disabled), a:active { opacity: 0.82; }
 .performance-missing h3 { margin: 16px 0 6px; color: var(--ink); }
 .performance-missing p { max-width: 38ch; margin: 0 0 22px; font-size: 13px; line-height: 1.7; }
 .performance-resource-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.performance-pdf-shell { width: min(960px, 100%); margin: 0 auto; }
+.performance-original-link { width: max-content; min-height: 44px; margin: 0 0 12px auto; padding: 0 14px; border: 1px solid var(--border); border-radius: 11px; display: flex; align-items: center; justify-content: center; gap: 7px; background: var(--surface-strong); color: var(--ink-soft); font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: var(--shadow-sm); }
+.performance-original-link:hover { border-color: var(--primary); color: var(--primary); }
+.performance-pdf-document { display: grid; gap: clamp(14px, 3vw, 26px); }
+.performance-pdf-page { width: 100%; min-height: 120px; display: flex; justify-content: center; overflow: visible; }
+.performance-pdf-page canvas { display: block; flex: 0 0 auto; background: white; box-shadow: 0 12px 32px rgba(34, 28, 24, 0.14); }
+.performance-pdf-error { min-height: 320px; padding: 32px; border: 1px dashed var(--border-strong); border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--surface-strong); color: var(--ink-soft); text-align: center; }
+.performance-pdf-error svg { color: var(--primary); }
+.performance-pdf-error strong { margin-top: 8px; color: var(--ink); }
+.performance-pdf-error span { font-size: 12px; }
 .performance-sheet { width: min(920px, 100%); margin: 0 auto; padding: clamp(22px, 5vw, 52px); border: 1px solid var(--border); border-radius: 20px; background: var(--surface-strong); box-shadow: var(--shadow-md); font-size: calc(16px * var(--sheet-scale, 1)); line-height: 1.55; }
 .performance-sheet > .title { display: none; }
 .performance-sheet .paragraph { margin: 0 0 2.2em; }
