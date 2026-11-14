@@ -612,6 +612,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
   const [offset, setOffset] = useState(0)
   const [fontScale, setFontScale] = useState(() => Number(window.localStorage.getItem('ensemble-live-font-scale')) || 1)
   const [renderedSheet, setRenderedSheet] = useState({ songId: '', offset: 0, html: '' })
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false)
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -628,6 +629,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
 
   useEffect(() => {
     sheetWrapRef.current?.scrollTo({ top: 0, behavior: 'instant' })
+    setIsHeaderCollapsed(false)
   }, [activeIndex])
 
   useEffect(() => {
@@ -705,44 +707,56 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
     goToSong(deltaX < 0 ? activeIndex + 1 : activeIndex - 1)
   }
 
+  function handleSheetScroll(event: React.UIEvent<HTMLElement>) {
+    const scrollTop = event.currentTarget.scrollTop
+    setIsHeaderCollapsed((current) => scrollTop > 72 ? true : scrollTop < 12 ? false : current)
+  }
+
   return (
     <dialog ref={dialogRef} className="performance-dialog" onClose={onClose} aria-labelledby="performance-title">
       {song && (
         <div className="performance-shell">
-          <header className="performance-header">
-            <div className="performance-title-row">
-              <div>
-                <span className="performance-kicker">現場模式</span>
-                <h2 id="performance-title">{song.title}</h2>
-                <p>{chordSheet ? `原調 ${chordSheet.originalKey} · ${chordSheet.sourceLabel}` : '尚未建立可轉調和弦譜'}</p>
-              </div>
-              <button type="button" className="performance-close" onClick={() => dialogRef.current?.close()} aria-label="關閉現場和弦譜"><X size={23} /></button>
-            </div>
+          <header className={`performance-header${isHeaderCollapsed ? ' is-collapsed' : ''}`}>
+            <button type="button" className="performance-compact-header" onClick={() => setIsHeaderCollapsed(false)} aria-label="展開現場模式控制列" aria-hidden={!isHeaderCollapsed} tabIndex={isHeaderCollapsed ? 0 : -1}>
+              <strong>{song.title}</strong>
+              <span><small>Key</small>{targetKey || '—'}</span>
+            </button>
 
-            {songs.length > 1 && (
-              <nav className="performance-set-nav" aria-label="演出歌單切換">
-                <button type="button" onClick={() => goToSong(activeIndex - 1)} disabled={activeIndex === 0} aria-label="上一首歌"><ChevronLeft size={22} aria-hidden="true" /></button>
-                <div aria-live="polite"><strong>{activeIndex + 1} / {songs.length}</strong><span>左右滑動切換歌曲</span></div>
-                <button type="button" onClick={() => goToSong(activeIndex + 1)} disabled={activeIndex === songs.length - 1} aria-label="下一首歌"><ChevronRight size={22} aria-hidden="true" /></button>
-              </nav>
-            )}
-
-            <div className="performance-toolbar">
-              <div className="key-stepper" aria-label="調整歌曲 Key">
-                <button type="button" onClick={() => updateOffset(offset - 1)} disabled={!chordSheet} aria-label="降低一個半音"><Minus size={24} /></button>
-                <div aria-live="polite"><small>目前 Key</small><strong>{targetKey || '—'}</strong><span>{chordSheet ? transposeLabel(offset) : '待補'}</span></div>
-                <button type="button" onClick={() => updateOffset(offset + 1)} disabled={!chordSheet} aria-label="升高一個半音"><Plus size={24} /></button>
+            <div className="performance-header-main" aria-hidden={isHeaderCollapsed}>
+              <div className="performance-title-row">
+                <div>
+                  <span className="performance-kicker">現場模式</span>
+                  <h2 id="performance-title">{song.title}</h2>
+                  <p>{chordSheet ? `原調 ${chordSheet.originalKey} · ${chordSheet.sourceLabel}` : '尚未建立可轉調和弦譜'}</p>
+                </div>
+                <button type="button" className="performance-close" onClick={() => dialogRef.current?.close()} aria-label="關閉現場和弦譜"><X size={23} /></button>
               </div>
-              <button type="button" className="performance-tool" onClick={() => updateOffset(0)} disabled={!chordSheet || offset === 0}><RotateCcw size={18} aria-hidden="true" /><span>恢復原調</span></button>
-              <div className="font-stepper" aria-label="調整和弦譜字體大小">
-                <button type="button" onClick={() => updateFontScale(fontScale - 0.1)} disabled={fontScale <= 0.5} aria-label="縮小字體"><ZoomOut size={19} /></button>
-                <span>{Math.round(fontScale * 100)}%</span>
-                <button type="button" onClick={() => updateFontScale(fontScale + 0.1)} disabled={fontScale >= 1.4} aria-label="放大字體"><ZoomIn size={19} /></button>
+
+              {songs.length > 1 && (
+                <nav className="performance-set-nav" aria-label="演出歌單切換">
+                  <button type="button" onClick={() => goToSong(activeIndex - 1)} disabled={activeIndex === 0} aria-label="上一首歌"><ChevronLeft size={22} aria-hidden="true" /></button>
+                  <div aria-live="polite"><strong>{activeIndex + 1} / {songs.length}</strong><span>左右滑動切換歌曲</span></div>
+                  <button type="button" onClick={() => goToSong(activeIndex + 1)} disabled={activeIndex === songs.length - 1} aria-label="下一首歌"><ChevronRight size={22} aria-hidden="true" /></button>
+                </nav>
+              )}
+
+              <div className="performance-toolbar">
+                <div className="key-stepper" aria-label="調整歌曲 Key">
+                  <button type="button" onClick={() => updateOffset(offset - 1)} disabled={!chordSheet} aria-label="降低一個半音"><Minus size={24} /></button>
+                  <div aria-live="polite"><small>目前 Key</small><strong>{targetKey || '—'}</strong><span>{chordSheet ? transposeLabel(offset) : '待補'}</span></div>
+                  <button type="button" onClick={() => updateOffset(offset + 1)} disabled={!chordSheet} aria-label="升高一個半音"><Plus size={24} /></button>
+                </div>
+                <button type="button" className="performance-tool" onClick={() => updateOffset(0)} disabled={!chordSheet || offset === 0}><RotateCcw size={18} aria-hidden="true" /><span>恢復原調</span></button>
+                <div className="font-stepper" aria-label="調整和弦譜字體大小">
+                  <button type="button" onClick={() => updateFontScale(fontScale - 0.1)} disabled={fontScale <= 0.5} aria-label="縮小字體"><ZoomOut size={19} /></button>
+                  <span>{Math.round(fontScale * 100)}%</span>
+                  <button type="button" onClick={() => updateFontScale(fontScale + 0.1)} disabled={fontScale >= 1.4} aria-label="放大字體"><ZoomIn size={19} /></button>
+                </div>
               </div>
             </div>
           </header>
 
-          <main ref={sheetWrapRef} className="performance-sheet-wrap" style={{ '--sheet-scale': fontScale } as React.CSSProperties} aria-busy={Boolean(chordSheet && !visibleSheet)} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+          <main ref={sheetWrapRef} className="performance-sheet-wrap" style={{ '--sheet-scale': fontScale } as React.CSSProperties} aria-busy={Boolean(chordSheet && !visibleSheet)} onScroll={handleSheetScroll} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
             {chordSheet
               ? visibleSheet
                 ? <div className="performance-sheet" dangerouslySetInnerHTML={{ __html: visibleSheet }} />
