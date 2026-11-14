@@ -1,4 +1,4 @@
-import { StrictMode, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { StrictMode, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   BookOpen,
@@ -603,8 +603,13 @@ function markRhythmRows(html: string) {
 
 function PerformanceDialog({ session, onClose }: { session: PerformanceSession | null; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const shellRef = useRef<HTMLDivElement>(null)
+  const headerRef = useRef<HTMLElement>(null)
   const sheetWrapRef = useRef<HTMLElement>(null)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const scrollFrameRef = useRef<number | null>(null)
+  const pendingScrollTopRef = useRef(0)
+  const headerCollapsedRef = useRef(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const songs = session?.songs ?? []
   const song = songs[activeIndex] ?? null
@@ -629,8 +634,31 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
 
   useEffect(() => {
     sheetWrapRef.current?.scrollTo({ top: 0, behavior: 'instant' })
+    shellRef.current?.style.setProperty('--performance-header-offset', '0px')
+    shellRef.current?.style.setProperty('--performance-collapse-progress', '0')
+    shellRef.current?.style.setProperty('--performance-compact-opacity', '0')
+    headerCollapsedRef.current = false
     setIsHeaderCollapsed(false)
   }, [activeIndex])
+
+  useLayoutEffect(() => {
+    const shell = shellRef.current
+    const header = headerRef.current
+    if (!shell || !header) return
+
+    const updateHeaderMetrics = () => {
+      shell.style.setProperty('--performance-header-height', `${header.offsetHeight}px`)
+    }
+
+    updateHeaderMetrics()
+    const observer = new ResizeObserver(updateHeaderMetrics)
+    observer.observe(header)
+    return () => observer.disconnect()
+  }, [song, songs.length])
+
+  useEffect(() => () => {
+    if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current)
+  }, [])
 
   useEffect(() => {
     if (!song) return
@@ -708,16 +736,43 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
   }
 
   function handleSheetScroll(event: React.UIEvent<HTMLElement>) {
-    const scrollTop = event.currentTarget.scrollTop
-    setIsHeaderCollapsed((current) => scrollTop > 72 ? true : scrollTop < 12 ? false : current)
+    pendingScrollTopRef.current = event.currentTarget.scrollTop
+    if (scrollFrameRef.current !== null) return
+
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null
+      const shell = shellRef.current
+      const header = headerRef.current
+      if (!shell || !header) return
+
+      const compactHeight = Number.parseFloat(getComputedStyle(shell).getPropertyValue('--performance-compact-height')) || 48
+      const maxOffset = Math.max(1, header.offsetHeight - compactHeight)
+      const offset = Math.min(pendingScrollTopRef.current, maxOffset)
+      const progress = offset / maxOffset
+      const compactOpacity = Math.max(0, Math.min(1, (progress - 0.72) / 0.28))
+      const nextCollapsed = progress >= 0.995
+
+      shell.style.setProperty('--performance-header-offset', `${offset}px`)
+      shell.style.setProperty('--performance-collapse-progress', progress.toFixed(3))
+      shell.style.setProperty('--performance-compact-opacity', compactOpacity.toFixed(3))
+
+      if (nextCollapsed !== headerCollapsedRef.current) {
+        headerCollapsedRef.current = nextCollapsed
+        setIsHeaderCollapsed(nextCollapsed)
+      }
+    })
+  }
+
+  function expandPerformanceHeader() {
+    sheetWrapRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   return (
     <dialog ref={dialogRef} className="performance-dialog" onClose={onClose} aria-labelledby="performance-title">
       {song && (
-        <div className="performance-shell">
-          <header className={`performance-header${isHeaderCollapsed ? ' is-collapsed' : ''}`}>
-            <button type="button" className="performance-compact-header" onClick={() => setIsHeaderCollapsed(false)} aria-label="展開現場模式控制列" aria-hidden={!isHeaderCollapsed} tabIndex={isHeaderCollapsed ? 0 : -1}>
+        <div ref={shellRef} className="performance-shell">
+          <header ref={headerRef} className={`performance-header${isHeaderCollapsed ? ' is-collapsed' : ''}`}>
+            <button type="button" className="performance-compact-header" onClick={expandPerformanceHeader} aria-label="展開現場模式控制列" aria-hidden={!isHeaderCollapsed} tabIndex={isHeaderCollapsed ? 0 : -1}>
               <strong>{song.title}</strong>
               <span><small>Key</small>{targetKey || '—'}</span>
             </button>

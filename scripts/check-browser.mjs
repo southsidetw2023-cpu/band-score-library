@@ -111,7 +111,7 @@ try {
     const box = await mobile.getByRole('button', { name: accessibleName }).boundingBox()
     assert(box && box.width >= 44 && box.height >= 44, `${accessibleName} 的觸控範圍小於 44px`)
   }
-  await mobile.locator('.performance-sheet-wrap').evaluate((element) => { element.scrollTop = 180 })
+  await mobile.locator('.performance-sheet-wrap').evaluate((element) => { element.scrollTop = 600 })
   await mobile.waitForFunction(() => document.querySelector('.performance-header')?.classList.contains('is-collapsed'))
   assert(await mobile.getByRole('button', { name: '展開現場模式控制列' }).isVisible(), '往下滑動後沒有顯示精簡控制列')
   assert((await mobile.locator('.performance-compact-header strong').textContent()) === 'How Much Do I Love You', '精簡控制列沒有顯示歌曲名稱')
@@ -120,6 +120,7 @@ try {
   await mobile.waitForTimeout(250)
   await mobile.screenshot({ path: 'artifacts/live-chords-mobile-collapsed-verified.png', fullPage: false })
   await mobile.getByRole('button', { name: '展開現場模式控制列' }).click()
+  await mobile.waitForFunction(() => !document.querySelector('.performance-header')?.classList.contains('is-collapsed'))
   assert(await mobile.getByRole('button', { name: '降低一個半音' }).isVisible(), '點擊精簡列後沒有展開完整控制區')
   await mobile.screenshot({ path: 'artifacts/live-chords-mobile-verified.png', fullPage: false })
   await mobile.getByRole('button', { name: '關閉現場和弦譜' }).click()
