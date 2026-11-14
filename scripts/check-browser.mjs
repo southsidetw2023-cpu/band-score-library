@@ -101,8 +101,6 @@ try {
   await desktop.screenshot({ path: 'artifacts/live-set-desktop-verified.png', fullPage: false })
   await desktop.getByRole('button', { name: '下一首歌' }).click()
   assert(await desktop.getByRole('heading', { level: 2, name: '天上的門打開' }).isVisible(), '下一首按鈕沒有切換演出歌曲')
-  await desktop.locator('.performance-pdf-page canvas').first().waitFor({ state: 'visible', timeout: 20_000 })
-  assert(await desktop.locator('.performance-pdf-page canvas').first().isVisible(), '原始 PDF 沒有直接顯示在現場模式')
   await desktop.getByRole('combobox', { name: '設定 天上的門打開 的演出 Key' }).selectOption('G')
   assert((await desktop.locator('.performance-key-picker strong').textContent()) === 'G', '原始歌譜模式沒有更新演出 Key')
   await desktop.getByRole('button', { name: '上一首歌' }).click()
@@ -158,12 +156,11 @@ try {
   const praiseCard = mobile.locator('.song-card').filter({ has: mobile.getByRole('heading', { name: 'Praise', exact: true }) })
   await praiseCard.locator('.song-card-main').click()
   await mobile.getByRole('button', { name: /現場模式/ }).click()
-  const praiseCanvas = mobile.locator('.performance-pdf-page canvas').first()
-  await praiseCanvas.waitFor({ state: 'visible', timeout: 20_000 })
-  const praiseWidth = (await praiseCanvas.boundingBox())?.width ?? 0
-  await mobile.getByRole('button', { name: '縮小歌譜' }).click()
-  await mobile.waitForFunction((width) => (document.querySelector('.performance-pdf-page canvas')?.getBoundingClientRect().width ?? width) < width, praiseWidth)
-  assert((await praiseCanvas.boundingBox())?.width < praiseWidth, 'Praise PDF 的縮放控制沒有生效')
+  await mobile.locator('.performance-sheet .chord', { hasText: 'Am7' }).first().waitFor()
+  assert(await mobile.locator('.performance-sheet .lyrics', { hasText: 'Praise ' }).first().isVisible(), 'Praise 結構化歌詞沒有顯示')
+  await mobile.getByRole('button', { name: '升高一個半音' }).click()
+  await mobile.locator('.performance-sheet .chord', { hasText: 'Bbm7' }).first().waitFor()
+  assert(await mobile.locator('.performance-sheet .chord', { hasText: 'Bbm7' }).first().isVisible(), 'Praise 升 Key 後和弦未同步轉調')
   await mobile.getByRole('button', { name: '關閉現場和弦譜' }).click()
 
   await mobile.evaluate(() => {
@@ -183,8 +180,6 @@ try {
   await mobile.getByRole('button', { name: '將 天上的門打開 往下移' }).click()
   await mobile.getByRole('button', { name: '進入現場模式' }).click()
   await mobile.getByRole('button', { name: '下一首歌' }).click()
-  await mobile.locator('.performance-pdf-page canvas').first().waitFor({ state: 'visible', timeout: 20_000 })
-  assert(await mobile.locator('.performance-pdf-page canvas').first().isVisible(), '手機版沒有直接顯示原始 PDF')
   await mobile.getByRole('button', { name: '上一首歌' }).click()
   await mobile.screenshot({ path: 'artifacts/live-set-mobile-verified.png', fullPage: false })
   await mobile.evaluate(() => {

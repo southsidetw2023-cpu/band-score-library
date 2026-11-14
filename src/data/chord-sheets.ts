@@ -60,7 +60,82 @@ How much do I want You
 So much that I'll give my life for You
 {end_of_bridge}`
 
+const praise = String.raw`{key: C}
+
+{comment: Intro}
+[Am7] / / / | [F] / / / | [C] / / / | [G] / / /
+
+{start_of_verse: Verse 1}
+[C]我在低谷讚美　[F]在高山讚美　[C]
+I'll praise in the valley, praise on the mountain
+[G]在確信讚美　[F]不確定也讚美　[C]
+I'll praise when I'm sure, praise when I'm doubting
+
+[C]就算孤身奮戰　[F]我仍高聲讚美　[C]
+I'll praise when outnumbered, praise when surrounded
+[G]只要仍然呼吸　[F]我就要高聲唱　[C]
+As long as I'm breathing, I've got a reason to
+{end_of_verse}
+
+{start_of_chorus: Chorus 1}
+[Am7]Praise the Lord, [F]Oh my soul
+[C]Praise the Lord, [G]Oh my soul
+[Am7]Praise the Lord, [F]Oh my soul
+[C]Praise the Lord, [G]Oh my soul
+{end_of_chorus}
+
+{start_of_verse: Verse 2}
+[C]在突破時讚美　[F]失敗仍讚美　[C]
+I'll praise when I feel it, I'll praise when I don't
+[G]因為我知道祢　[F]做王掌權　[C]
+I'll praise cause I know, You're still in control
+
+[C]讚美是我武器　[F]不只是聲音　[C]
+My praise is a weapon, it's more than a sound
+[G]讚美大聲呼喊　[F]耶利哥都倒塌　[C]
+My praise is the shout that brings Jericho down
+[G]只要仍然呼吸　[F]我就要高聲唱　[C]
+As long as I'm breathing, I've got a reason to
+{end_of_verse}
+
+{start_of_chorus: Chorus 2}
+[Am7]Praise the Lord, [F]Oh my soul
+[C]Praise the Lord, [G]Oh my soul
+[Am7]Praise the Lord, [F]Oh my soul
+[C]Praise the Lord, [G]Oh my soul
+
+[Am7]我無法沉默　[F]因主祢活著
+I won't be quiet, my God is alive
+[C]怎能隱藏在心中　[G]讚美如同大水淹沒一切仇敵
+How could I keep it inside? Cause praise is the water my enemies drown in
+[G]只要仍然呼吸　[F]我就要高聲唱
+As long as I'm breathing, I've got a reason to
+{end_of_chorus}
+
+{comment: Interlude}
+[C] / / / | [C] / / / | [C] / / / | [C] / / /
+
+{start_of_bridge: Bridge}
+[C]讚美祢掌權　[Dm]統管萬有
+I'll praise cause You're sovereign, praise cause You reign
+[Am7]讚美祢復活　[F]已勝過死亡
+Praise cause You rose and defeated the grave
+[C]我讚美祢信實　[Dm]何等真實
+I'll praise cause You're faithful, praise cause You're true
+[Am7]讚美祢超越這世上所有　[F]
+Praise cause there's nobody greater than You
+{end_of_bridge}
+
+{comment: Ending}
+[Am7] / / / | [F] / / / | [C] / / / | [G] / / /`
+
 export const chordSheets: Record<string, ChordSheetData> = {
+  '讚美-064-praise': {
+    songId: '讚美-064-praise',
+    originalKey: 'C',
+    sourceLabel: '依現有 PDF 歌譜整理',
+    chordPro: praise,
+  },
   '敬拜-088-how-much-do-i-love-you': {
     songId: '敬拜-088-how-much-do-i-love-you',
     originalKey: 'D',
