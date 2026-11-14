@@ -71,8 +71,26 @@ try {
   await search.fill('')
   await desktop.screenshot({ path: 'artifacts/library-desktop-verified.png', fullPage: false })
 
+  await desktop.evaluate(() => {
+    window.localStorage.setItem('ensemble-setlist', JSON.stringify([
+      '敬拜-088-how-much-do-i-love-you',
+      '讚美-073-天上的門打開',
+    ]))
+  })
+  await desktop.reload({ waitUntil: 'networkidle' })
   await desktop.getByRole('button', { name: /本週歌單/ }).first().click()
   assert(await desktop.getByRole('heading', { name: '本週排練歌單' }).isVisible(), '歌單頁未開啟')
+  await desktop.getByRole('button', { name: '進入現場模式' }).click()
+  assert(await desktop.getByRole('heading', { level: 2, name: 'How Much Do I Love You' }).isVisible(), '演出歌單沒有從第一首開始')
+  await desktop.screenshot({ path: 'artifacts/live-set-desktop-verified.png', fullPage: false })
+  await desktop.getByRole('button', { name: '下一首歌' }).click()
+  assert(await desktop.getByRole('heading', { level: 2, name: '天上的門打開' }).isVisible(), '下一首按鈕沒有切換演出歌曲')
+  assert(await desktop.getByText('這首歌尚未建立現場和弦譜').isVisible(), '缺少現場和弦譜時沒有清楚提示')
+  assert(await desktop.getByRole('button', { name: '升高一個半音' }).isDisabled(), '無可轉調和弦譜時仍可修改 Key')
+  await desktop.getByRole('button', { name: '上一首歌' }).click()
+  for (let index = 0; index < 5; index += 1) await desktop.getByRole('button', { name: '縮小字體' }).click()
+  assert((await desktop.locator('.font-stepper span').textContent()) === '50%', '字體縮放下限應為 50%')
+  await desktop.getByRole('button', { name: '關閉現場和弦譜' }).click()
   await desktop.getByRole('button', { name: /管理中心/ }).first().click()
   assert(await desktop.getByRole('heading', { name: '管理中心' }).isVisible(), '管理中心未開啟')
 
@@ -97,6 +115,27 @@ try {
   await mobile.getByRole('button', { name: '關閉現場和弦譜' }).click()
   await mobile.screenshot({ path: 'artifacts/library-mobile-verified.png', fullPage: false })
 
+  await mobile.evaluate(() => {
+    window.localStorage.setItem('ensemble-setlist', JSON.stringify([
+      '敬拜-088-how-much-do-i-love-you',
+      '讚美-073-天上的門打開',
+    ]))
+  })
+  await mobile.reload({ waitUntil: 'networkidle' })
+  await mobile.getByRole('button', { name: /本週歌單/ }).click()
+  await mobile.getByRole('button', { name: '進入現場模式' }).click()
+  await mobile.screenshot({ path: 'artifacts/live-set-mobile-verified.png', fullPage: false })
+  await mobile.evaluate(() => {
+    const target = document.querySelector('.performance-sheet-wrap')
+    if (!target) throw new Error('找不到現場歌譜滑動區')
+    const start = new Touch({ identifier: 1, target, clientX: 320, clientY: 420 })
+    const end = new Touch({ identifier: 1, target, clientX: 80, clientY: 426 })
+    target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, changedTouches: [start] }))
+    target.dispatchEvent(new TouchEvent('touchend', { bubbles: true, changedTouches: [end] }))
+  })
+  assert(await mobile.getByRole('heading', { level: 2, name: '天上的門打開' }).isVisible(), '手機左滑沒有切換到下一首歌')
+  await mobile.getByRole('button', { name: '關閉現場和弦譜' }).click()
+
   await mobile.evaluate(() => navigator.serviceWorker.ready)
   await mobile.reload({ waitUntil: 'networkidle' })
   await mobile.context().setOffline(true)
@@ -112,7 +151,7 @@ try {
     await page.close()
   }
 
-  console.log('瀏覽器驗證完成：207 首資料、即時轉調、Key 記憶、離線快取、歌曲詳情、歌單、管理中心，以及手機／平板直橫向皆通過。')
+  console.log('瀏覽器驗證完成：207 首資料、演出歌單滑動切歌、即時轉調、50% 字體縮放、Key 記憶、離線快取、歌曲詳情、管理中心，以及手機／平板直橫向皆通過。')
 } finally {
   await browser.close()
 }
