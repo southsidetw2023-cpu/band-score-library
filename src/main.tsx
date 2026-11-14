@@ -96,7 +96,18 @@ function getInitialSetlist() {
       // Continue with the curated local demo set.
     }
   }
-  return songs.slice(0, 4).map((song) => song.id)
+  return []
+}
+
+interface RemoteSetlist {
+  ids: string[]
+  revision: number
+  updatedAt: string
+}
+
+function validSetlistIds(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.filter((id): id is string => typeof id === 'string' && songs.some((song) => song.id === id)))]
 }
 
 function App() {
@@ -110,10 +121,110 @@ function App() {
   const [selectedSong, setSelectedSong] = useState<Song | null>(null)
   const [performanceSession, setPerformanceSession] = useState<PerformanceSession | null>(null)
   const [setlistIds, setSetlistIds] = useState<string[]>(getInitialSetlist)
+  const [setlistSyncMessage, setSetlistSyncMessage] = useState('正在同步團隊歌單…')
+  const setlistIdsRef = useRef(setlistIds)
+  const setlistRevisionRef = useRef(-1)
+  const pendingSetlistWritesRef = useRef(0)
+  const holdRemoteSetlistUntilRef = useRef(0)
+  const setlistWriteQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const canEditSetlist = Boolean(auth.user?.canUpload || share.active)
 
   useEffect(() => {
+    setlistIdsRef.current = setlistIds
     window.localStorage.setItem('ensemble-setlist', JSON.stringify(setlistIds))
   }, [setlistIds])
+
+  const applyRemoteSetlist = useCallback((remote: RemoteSetlist) => {
+    if (!Number.isSafeInteger(remote.revision) || remote.revision < setlistRevisionRef.current) return
+    const nextIds = validSetlistIds(remote.ids)
+    setlistRevisionRef.current = remote.revision
+    setlistIdsRef.current = nextIds
+    setSetlistIds(nextIds)
+    setSetlistSyncMessage('團隊歌單已同步')
+  }, [])
+
+  const loadRemoteSetlist = useCallback(async () => {
+    if (pendingSetlistWritesRef.current > 0 || Date.now() < holdRemoteSetlistUntilRef.current) return
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}api/setlist`, { cache: 'no-store' })
+      const payload = await response.json() as { setlist?: RemoteSetlist; error?: string }
+      if (!response.ok || !payload.setlist) throw new Error(payload.error || '無法讀取團隊歌單。')
+      applyRemoteSetlist(payload.setlist)
+    } catch {
+      setSetlistSyncMessage('目前無法連線同步，將保留這台裝置的歌單')
+    }
+  }, [applyRemoteSetlist])
+
+  useEffect(() => {
+    void loadRemoteSetlist()
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void loadRemoteSetlist()
+    }, 2_000)
+    const refresh = () => void loadRemoteSetlist()
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [loadRemoteSetlist])
+
+  useEffect(() => {
+    const syncAcrossTabs = (event: StorageEvent) => {
+      if (event.key !== 'ensemble-setlist' || !event.newValue) return
+      try {
+        const nextIds = validSetlistIds(JSON.parse(event.newValue))
+        holdRemoteSetlistUntilRef.current = Date.now() + 3_000
+        setlistIdsRef.current = nextIds
+        setSetlistIds(nextIds)
+        setSetlistSyncMessage('團隊歌單已同步')
+      } catch {
+        // Ignore malformed data written by an older page.
+      }
+    }
+    window.addEventListener('storage', syncAcrossTabs)
+    return () => window.removeEventListener('storage', syncAcrossTabs)
+  }, [])
+
+  const persistSetlist = useCallback((ids: string[]) => {
+    pendingSetlistWritesRef.current += 1
+    holdRemoteSetlistUntilRef.current = Date.now() + 3_000
+    setSetlistSyncMessage('正在同步團隊歌單…')
+    setlistWriteQueueRef.current = setlistWriteQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const response = await fetch(`${import.meta.env.BASE_URL}api/setlist`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              ...uploadAuthorizationHeaders(auth.credential, share.token),
+            },
+            body: JSON.stringify({ ids }),
+          })
+          const payload = await response.json() as { setlist?: RemoteSetlist; error?: string }
+          if (!response.ok || !payload.setlist) throw new Error(payload.error || '無法同步團隊歌單。')
+          setlistRevisionRef.current = Math.max(setlistRevisionRef.current, payload.setlist.revision)
+          setSetlistSyncMessage('團隊歌單已同步')
+        } catch (error) {
+          setSetlistSyncMessage(error instanceof Error ? error.message : '無法同步團隊歌單。')
+        } finally {
+          pendingSetlistWritesRef.current -= 1
+        }
+      })
+  }, [auth.credential, share.token])
+
+  const commitSetlist = useCallback((ids: string[]) => {
+    if (!canEditSetlist) {
+      setView('admin')
+      return
+    }
+    const nextIds = validSetlistIds(ids)
+    setlistIdsRef.current = nextIds
+    setSetlistIds(nextIds)
+    persistSetlist(nextIds)
+  }, [canEditSetlist, persistSetlist])
 
   const filteredSongs = useMemo(() => {
     const normalizedQuery = deferredQuery.trim().toLocaleLowerCase('zh-Hant')
@@ -134,24 +245,24 @@ function App() {
     .filter((song): song is Song => Boolean(song))
 
   function addToSetlist(song: Song) {
-    setSetlistIds((current) => current.includes(song.id) ? current : [...current, song.id])
+    const current = setlistIdsRef.current
+    commitSetlist(current.includes(song.id) ? current : [...current, song.id])
   }
 
   function removeFromSetlist(songId: string) {
-    setSetlistIds((current) => current.filter((id) => id !== songId))
+    commitSetlist(setlistIdsRef.current.filter((id) => id !== songId))
   }
 
   function moveSetlistSong(songId: string, toIndex: number) {
-    setSetlistIds((current) => {
-      const fromIndex = current.indexOf(songId)
-      const boundedIndex = Math.max(0, Math.min(toIndex, current.length - 1))
-      if (fromIndex < 0 || fromIndex === boundedIndex) return current
+    const current = setlistIdsRef.current
+    const fromIndex = current.indexOf(songId)
+    const boundedIndex = Math.max(0, Math.min(toIndex, current.length - 1))
+    if (fromIndex < 0 || fromIndex === boundedIndex) return
 
-      const next = [...current]
-      next.splice(fromIndex, 1)
-      next.splice(boundedIndex, 0, songId)
-      return next
-    })
+    const next = [...current]
+    next.splice(fromIndex, 1)
+    next.splice(boundedIndex, 0, songId)
+    commitSetlist(next)
   }
 
   function openLiveSheet(song: Song) {
@@ -193,9 +304,10 @@ function App() {
             onOpen={setSelectedSong}
             onRemove={removeFromSetlist}
             onMove={moveSetlistSong}
-            onClear={() => setSetlistIds([])}
+            onClear={() => commitSetlist([])}
             onBrowse={() => setView('library')}
             onStartPerformance={openPerformanceSet}
+            syncMessage={setlistSyncMessage}
           />
         )}
 
@@ -406,7 +518,7 @@ function SongCard({ song, inSetlist, onOpen, onAdd }: { song: Song; inSetlist: b
   )
 }
 
-function SetlistView({ songs: setlistSongs, onOpen, onRemove, onMove, onClear, onBrowse, onStartPerformance }: { songs: Song[]; onOpen: (song: Song) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onClear: () => void; onBrowse: () => void; onStartPerformance: () => void }) {
+function SetlistView({ songs: setlistSongs, onOpen, onRemove, onMove, onClear, onBrowse, onStartPerformance, syncMessage }: { songs: Song[]; onOpen: (song: Song) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onClear: () => void; onBrowse: () => void; onStartPerformance: () => void; syncMessage: string }) {
   const [draggedSongId, setDraggedSongId] = useState<string | null>(null)
   const [orderAnnouncement, setOrderAnnouncement] = useState('')
   const draggedSongIdRef = useRef<string | null>(null)
@@ -464,7 +576,7 @@ function SetlistView({ songs: setlistSongs, onOpen, onRemove, onMove, onClear, o
         <div>
           <p className="eyebrow">SETLIST</p>
           <h2 id="setlist-title">本週排練歌單</h2>
-          <p>準備順序會儲存在這台裝置，正式版再同步給全團。</p>
+          <p>歌單變更會同步到所有裝置。{syncMessage && ` ${syncMessage}`}</p>
         </div>
         {setlistSongs.length > 0 && <button type="button" className="button button-ghost button-danger" onClick={onClear}><Trash2 size={17} aria-hidden="true" />清空歌單</button>}
       </div>

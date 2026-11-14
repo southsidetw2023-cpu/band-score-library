@@ -17,7 +17,7 @@ GitHub Pages 備用網址：<https://southsidetw2023-cpu.github.io/band-score-li
 - 177 份 Google Drive PDF 保留作原始資料來源
 - 〈How Much Do I Love You〉、〈Praise〉與〈天上的門打開〉具備已校對的結構化現場和弦譜、即時轉調與 Key 記憶
 - 另有 174 首以原始 PDF 文字層與頁面 OCR 交叉核對，完成可即時轉調的結構化和弦譜
-- 本週排練歌單（保存在瀏覽器本機）
+- 本週排練歌單（跨裝置共用、儲存後立即上傳、每 2 秒背景同步）
 - Google 管理者登入、免登入分享上傳網址與網址輪替
 - PDF、JPG、PNG 私有檔案上傳（單檔上限 20 MB）
 - 上傳檔案的類型、大小與伺服器端身分驗證
@@ -29,7 +29,7 @@ GitHub Pages 備用網址：<https://southsidetw2023-cpu.github.io/band-score-li
 
 - 已上傳 PDF／圖片轉為可即時移調的結構化和弦譜
 - Google Drive 舊檔案搬移至私有儲存
-- 團隊即時同步、共用／個人筆記
+- 共用／個人筆記
 - 外部歌譜 PDF 的完整離線快取
 
 ## 本機執行
