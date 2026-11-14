@@ -2,7 +2,9 @@
 
 本機可操作的第一版原型，使用 PPC 敬拜團 Google 試算表的 207 筆資料建立樂譜庫介面。
 
-公開預覽：<https://southsidetw2023-cpu.github.io/band-score-library/>
+正式網站：<https://band-score-library.pages.dev/>
+
+GitHub Pages 備用網址：<https://southsidetw2023-cpu.github.io/band-score-library/>
 
 > 目前是公開介面原型，尚未啟用 Google 登入、成員核准與私有檔案權限。
 
