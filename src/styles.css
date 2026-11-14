@@ -424,6 +424,15 @@ button:active:not(:disabled), a:active { opacity: 0.82; }
 .performance-sheet .comment { margin: 0.9em 0 0.35em; color: var(--ink); font-size: 0.82em; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
 .performance-sheet .label { padding: 0.28em 0.62em; border-radius: 999px; background: var(--primary-soft); color: var(--primary); }
 .performance-sheet .comment { padding-bottom: 0.3em; border-bottom: 1px solid var(--border); }
+.structured-performance-sheet { display: grid; gap: 0.35em; }
+.structured-section { margin: 1.15em 0 0.35em; padding: 0.3em 0.65em; border-radius: 999px; justify-self: start; background: var(--primary-soft); color: var(--primary); font-size: 0.82em; font-weight: 800; letter-spacing: 0.04em; }
+.structured-section:first-child { margin-top: 0; }
+.structured-row { white-space: pre-wrap; overflow-wrap: anywhere; }
+.structured-chords { margin-top: 0.45em; color: var(--primary); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.95em; font-weight: 800; line-height: 1.35; word-spacing: 0.45em; }
+.structured-lyrics { color: var(--ink); font-size: 1.02em; font-weight: 500; line-height: 1.55; }
+.structured-lyrics + .structured-lyrics { color: var(--ink-soft); font-size: 0.88em; font-weight: 400; }
+.structured-performance-sheet[data-review-status="draft"]::before,
+.structured-performance-sheet[data-review-status="needs_key_review"]::before { content: "由原始歌譜轉為結構化文字，尚待逐首校對"; margin: -0.3em 0 0.8em; padding: 0.65em 0.85em; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-muted); color: var(--ink-soft); font-size: 0.75em; font-weight: 700; }
 
 @media (max-width: 1120px) {
   .song-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -165,6 +165,27 @@ try {
   assert(await mobile.locator('.performance-sheet .chord', { hasText: 'Bbm7' }).first().isVisible(), 'Praise 升 Key 後和弦未同步轉調')
   await mobile.getByRole('button', { name: '關閉現場和弦譜' }).click()
 
+  for (const example of [
+    { title: 'The Joy', originalKey: 'F', targetKey: 'F#', chord: 'F# B/F# F#' },
+    { title: '在呼召我之處', originalKey: 'E', targetKey: 'F', chord: 'F Bb/F F Eb/F F' },
+    { title: 'God is Here 神同在', originalKey: 'D', targetKey: 'Eb', chord: 'Eb' },
+  ]) {
+    await mobile.getByPlaceholder('搜尋歌名、出處、語言或年份').fill(example.title)
+    const card = mobile.locator('.song-card').filter({ has: mobile.getByRole('heading', { name: example.title, exact: true }) })
+    await card.locator('.song-card-main').click()
+    await mobile.getByRole('button', { name: /現場模式/ }).click()
+    await mobile.getByRole('heading', { level: 2, name: example.title, exact: true }).waitFor()
+    await mobile.locator('.structured-performance-sheet').waitFor()
+    await mobile.waitForFunction((key) => document.querySelector('.key-stepper strong')?.textContent === key, example.originalKey)
+    assert((await mobile.locator('.key-stepper strong').textContent()) === example.originalKey, `${example.title} 沒有顯示原調`)
+    assert((await mobile.locator('.performance-pdf-page canvas').count()) === 0, `${example.title} 仍在載入 PDF`)
+    await mobile.getByRole('button', { name: '升高一個半音' }).click()
+    assert((await mobile.locator('.key-stepper strong').textContent()) === example.targetKey, `${example.title} 沒有更新目前 Key`)
+    await mobile.locator('.structured-chords', { hasText: example.chord }).first().waitFor()
+    assert(await mobile.locator('.structured-chords', { hasText: example.chord }).first().isVisible(), `${example.title} 和弦沒有同步轉調`)
+    await mobile.getByRole('button', { name: '關閉現場和弦譜' }).click()
+  }
+
   await mobile.evaluate(() => {
     window.localStorage.setItem('ensemble-setlist', JSON.stringify([
       '敬拜-088-how-much-do-i-love-you',

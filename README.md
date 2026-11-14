@@ -15,7 +15,8 @@ GitHub Pages 備用網址：<https://southsidetw2023-cpu.github.io/band-score-li
 - 歌曲詳細資料與原始資源連結
 - 全部歌曲皆可進入現場模式、設定各自演出 Key，並依歌單切換
 - 177 份 Google Drive PDF 保留作原始資料來源
-- 〈How Much Do I Love You〉、〈Praise〉與〈天上的門打開〉具備結構化現場和弦譜、即時轉調與 Key 記憶
+- 〈How Much Do I Love You〉、〈Praise〉與〈天上的門打開〉具備已校對的結構化現場和弦譜、即時轉調與 Key 記憶
+- 另有 174 首由現有歌譜轉成可即時轉調的結構化草稿，介面會標示「待逐首校對」
 - 本週排練歌單（保存在瀏覽器本機）
 - 管理者匯入、權限與批次上傳流程預覽
 - 手機、平板與桌面響應式介面

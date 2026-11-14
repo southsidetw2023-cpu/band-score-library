@@ -40,6 +40,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { getChordSheet, type ChordSheetData } from './data/chord-sheets'
+import { getStructuredSheet, type StructuredSheetData } from './data/structured-sheets'
 import songsData from './data/songs.generated.json'
 import type { Song, ViewName } from './types'
 import './styles.css'
@@ -680,6 +681,46 @@ function transposeLabel(offset: number) {
   return `${offset > 0 ? '+' : ''}${offset} 半音`
 }
 
+const noteValues: Record<string, number> = {
+  C: 0, 'C#': 1, Db: 1, D: 2, 'D#': 3, Eb: 3, E: 4, F: 5,
+  'F#': 6, Gb: 6, G: 7, 'G#': 8, Ab: 8, A: 9, 'A#': 10, Bb: 10, B: 11,
+}
+const sharpNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+const flatNotes = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
+
+function transposeNote(note: string, offset: number, preferFlats: boolean) {
+  const value = noteValues[note]
+  if (value === undefined) return note
+  return (preferFlats ? flatNotes : sharpNotes)[(value + offset + 120) % 12]
+}
+
+function transposeChordToken(token: string, offset: number, preferFlats: boolean) {
+  const match = token.match(/^([|:(]*)([A-G])([#b]?)([^/\s|,;:]*)(?:\/([A-G])([#b]?))?([|,;:)]*)$/)
+  if (!match) return token
+  const [, prefix, root, accidental, suffix, bass, bassAccidental, ending] = match
+  const nextRoot = transposeNote(`${root}${accidental}`, offset, preferFlats)
+  const nextBass = bass ? `/${transposeNote(`${bass}${bassAccidental}`, offset, preferFlats)}` : ''
+  return `${prefix}${nextRoot}${suffix}${nextBass}${ending}`
+}
+
+function transposeChordText(text: string, offset: number, preferFlats: boolean) {
+  if (offset === 0) return text
+  return text.split(/(\s+)/).map((token) => transposeChordToken(token, offset, preferFlats)).join('')
+}
+
+function StructuredPerformanceSheet({ sheet, offset, targetKey }: { sheet: StructuredSheetData; offset: number; targetKey: string }) {
+  const preferFlats = ['F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb'].includes(targetKey)
+  return (
+    <div className="performance-sheet structured-performance-sheet" data-review-status={sheet.reviewStatus}>
+      {sheet.rows.map((row, index) => {
+        if (row.type === 'section') return <h3 key={`${index}-${row.text}`} className="structured-section">{row.text}</h3>
+        if (row.type === 'chords') return <div key={`${index}-${row.text}`} className="structured-row structured-chords">{transposeChordText(row.text, offset, preferFlats)}</div>
+        return <div key={`${index}-${row.text}`} className="structured-row structured-lyrics">{row.text}</div>
+      })}
+    </div>
+  )
+}
+
 function markRhythmRows(html: string) {
   const container = document.createElement('div')
   container.innerHTML = html
@@ -824,6 +865,9 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
   const songs = session?.songs ?? []
   const song = songs[activeIndex] ?? null
   const chordSheet = song ? getChordSheet(song.id) : null
+  const structuredSheet = song ? getStructuredSheet(song.id) : null
+  const liveSheet = chordSheet ?? structuredSheet
+  const canTranspose = Boolean(liveSheet?.originalKey)
   const inlineScoreUrl = song ? getInlineScoreUrl(song.scoreUrl) : ''
   const [offset, setOffset] = useState(0)
   const [performanceKey, setPerformanceKey] = useState('')
@@ -901,15 +945,15 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
   useEffect(() => {
     if (!song) return
     function handleKeyDown(event: KeyboardEvent) {
-      if ((event.key === '+' || event.key === '=') && chordSheet) updateOffset(offset + 1)
-      if (event.key === '-' && chordSheet) updateOffset(offset - 1)
-      if (event.key === '0' && chordSheet) updateOffset(0)
+      if ((event.key === '+' || event.key === '=') && canTranspose) updateOffset(offset + 1)
+      if (event.key === '-' && canTranspose) updateOffset(offset - 1)
+      if (event.key === '0' && canTranspose) updateOffset(0)
       if (event.key === 'ArrowLeft' && activeIndex > 0) setActiveIndex((current) => current - 1)
       if (event.key === 'ArrowRight' && activeIndex < songs.length - 1) setActiveIndex((current) => current + 1)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activeIndex, chordSheet, offset, song, songs.length])
+  }, [activeIndex, canTranspose, offset, song, songs.length])
 
   useEffect(() => {
     if (!chordSheet) {
@@ -930,7 +974,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
     return () => { cancelled = true }
   }, [chordSheet, offset])
 
-  const targetKey = chordSheet ? currentKey(chordSheet.originalKey, offset) : performanceKey
+  const targetKey = liveSheet?.originalKey ? currentKey(liveSheet.originalKey, offset) : performanceKey
   const visibleSheet = song && renderedSheet.songId === song.id && renderedSheet.offset === offset ? renderedSheet.html : ''
 
   function goToSong(nextIndex: number) {
@@ -1001,7 +1045,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
                 <div>
                   <span className="performance-kicker">現場模式</span>
                   <h2 id="performance-title">{song.title}</h2>
-                  <p>{chordSheet ? `原調 ${chordSheet.originalKey} · ${chordSheet.sourceLabel}` : '原始歌譜模式 · 可記錄演出 Key'}</p>
+                  <p>{liveSheet ? `${liveSheet.originalKey ? `原調 ${liveSheet.originalKey}` : '原調待補'} · ${liveSheet.sourceLabel}` : '尚無結構化和弦譜 · 可記錄演出 Key'}</p>
                 </div>
                 <button type="button" className="performance-close" onClick={() => dialogRef.current?.close()} aria-label="關閉現場和弦譜"><X size={23} /></button>
               </div>
@@ -1015,7 +1059,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
               )}
 
               <div className="performance-toolbar">
-                {chordSheet ? (
+                {canTranspose ? (
                   <div className="key-stepper" aria-label="調整歌曲 Key">
                     <button type="button" onClick={() => updateOffset(offset - 1)} aria-label="降低一個半音"><Minus size={24} /></button>
                     <div aria-live="polite"><small>目前 Key</small><strong>{targetKey}</strong><span>{transposeLabel(offset)}</span></div>
@@ -1030,11 +1074,11 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
                     </select>
                   </label>
                 )}
-                <button type="button" className="performance-tool" onClick={() => updateOffset(0)} disabled={!chordSheet || offset === 0}><RotateCcw size={18} aria-hidden="true" /><span>恢復原調</span></button>
-                <div className="font-stepper" aria-label={chordSheet ? '調整和弦譜字體大小' : '調整歌譜大小'}>
-                  <button type="button" onClick={() => updateFontScale(fontScale - 0.1)} disabled={fontScale <= 0.5} aria-label={chordSheet ? '縮小字體' : '縮小歌譜'}><ZoomOut size={19} /></button>
+                <button type="button" className="performance-tool" onClick={() => updateOffset(0)} disabled={!canTranspose || offset === 0}><RotateCcw size={18} aria-hidden="true" /><span>恢復原調</span></button>
+                <div className="font-stepper" aria-label={liveSheet ? '調整和弦譜字體大小' : '調整歌譜大小'}>
+                  <button type="button" onClick={() => updateFontScale(fontScale - 0.1)} disabled={fontScale <= 0.5} aria-label={liveSheet ? '縮小字體' : '縮小歌譜'}><ZoomOut size={19} /></button>
                   <span>{Math.round(fontScale * 100)}%</span>
-                  <button type="button" onClick={() => updateFontScale(fontScale + 0.1)} disabled={fontScale >= 1.4} aria-label={chordSheet ? '放大字體' : '放大歌譜'}><ZoomIn size={19} /></button>
+                  <button type="button" onClick={() => updateFontScale(fontScale + 0.1)} disabled={fontScale >= 1.4} aria-label={liveSheet ? '放大字體' : '放大歌譜'}><ZoomIn size={19} /></button>
                 </div>
               </div>
             </div>
@@ -1045,6 +1089,8 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
               ? visibleSheet
                 ? <div className="performance-sheet" dangerouslySetInnerHTML={{ __html: visibleSheet }} />
                 : <div className="performance-loading"><LoaderCircle size={24} className="spin" aria-hidden="true" />正在準備和弦譜</div>
+              : structuredSheet
+                ? <StructuredPerformanceSheet sheet={structuredSheet} offset={offset} targetKey={targetKey} />
               : inlineScoreUrl
                 ? <div className="performance-pdf-shell">
                     <a className="performance-original-link" href={song.scoreUrl} target="_blank" rel="noreferrer">另開原始歌譜<ExternalLink size={16} aria-hidden="true" /></a>
