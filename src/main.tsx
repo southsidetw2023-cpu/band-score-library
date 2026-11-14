@@ -5,8 +5,10 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CirclePlay,
   CircleUserRound,
   CloudUpload,
@@ -120,6 +122,19 @@ function App() {
     setSetlistIds((current) => current.filter((id) => id !== songId))
   }
 
+  function moveSetlistSong(songId: string, toIndex: number) {
+    setSetlistIds((current) => {
+      const fromIndex = current.indexOf(songId)
+      const boundedIndex = Math.max(0, Math.min(toIndex, current.length - 1))
+      if (fromIndex < 0 || fromIndex === boundedIndex) return current
+
+      const next = [...current]
+      next.splice(fromIndex, 1)
+      next.splice(boundedIndex, 0, songId)
+      return next
+    })
+  }
+
   function openLiveSheet(song: Song) {
     setSelectedSong(null)
     setPerformanceSession({ songs: [song], initialSongId: song.id })
@@ -158,6 +173,7 @@ function App() {
             songs={setlist}
             onOpen={setSelectedSong}
             onRemove={removeFromSetlist}
+            onMove={moveSetlistSong}
             onClear={() => setSetlistIds([])}
             onBrowse={() => setView('library')}
             onStartPerformance={openPerformanceSet}
@@ -360,7 +376,58 @@ function SongCard({ song, inSetlist, onOpen, onAdd }: { song: Song; inSetlist: b
   )
 }
 
-function SetlistView({ songs: setlistSongs, onOpen, onRemove, onClear, onBrowse, onStartPerformance }: { songs: Song[]; onOpen: (song: Song) => void; onRemove: (id: string) => void; onClear: () => void; onBrowse: () => void; onStartPerformance: () => void }) {
+function SetlistView({ songs: setlistSongs, onOpen, onRemove, onMove, onClear, onBrowse, onStartPerformance }: { songs: Song[]; onOpen: (song: Song) => void; onRemove: (id: string) => void; onMove: (id: string, toIndex: number) => void; onClear: () => void; onBrowse: () => void; onStartPerformance: () => void }) {
+  const [draggedSongId, setDraggedSongId] = useState<string | null>(null)
+  const [orderAnnouncement, setOrderAnnouncement] = useState('')
+  const draggedSongIdRef = useRef<string | null>(null)
+  const pointerIdRef = useRef<number | null>(null)
+  const pointerStartRef = useRef({ x: 0, y: 0 })
+  const pointerMovedRef = useRef(false)
+
+  function announceMove(song: Song, toIndex: number) {
+    setOrderAnnouncement(`${song.title} 已移至第 ${toIndex + 1} 首`)
+  }
+
+  function moveSong(song: Song, toIndex: number) {
+    if (toIndex < 0 || toIndex >= setlistSongs.length) return
+    onMove(song.id, toIndex)
+    announceMove(song, toIndex)
+  }
+
+  function startDrag(event: React.PointerEvent<HTMLButtonElement>, song: Song) {
+    if (!event.isPrimary || event.button !== 0) return
+    event.preventDefault()
+    draggedSongIdRef.current = song.id
+    pointerIdRef.current = event.pointerId
+    pointerStartRef.current = { x: event.clientX, y: event.clientY }
+    pointerMovedRef.current = false
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setDraggedSongId(song.id)
+  }
+
+  function dragSong(event: React.PointerEvent<HTMLButtonElement>) {
+    const songId = draggedSongIdRef.current
+    if (!songId || pointerIdRef.current !== event.pointerId) return
+    event.preventDefault()
+    if (Math.hypot(event.clientX - pointerStartRef.current.x, event.clientY - pointerStartRef.current.y) > 5) {
+      pointerMovedRef.current = true
+    }
+    const row = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-setlist-index]')
+    const toIndex = Number(row?.dataset.setlistIndex)
+    if (!Number.isInteger(toIndex)) return
+    onMove(songId, toIndex)
+  }
+
+  function finishDrag(event: React.PointerEvent<HTMLButtonElement>, song: Song) {
+    if (pointerIdRef.current !== event.pointerId) return
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    const finalIndex = setlistSongs.findIndex((item) => item.id === song.id)
+    if (pointerMovedRef.current && finalIndex >= 0) announceMove(song, finalIndex)
+    draggedSongIdRef.current = null
+    pointerIdRef.current = null
+    setDraggedSongId(null)
+  }
+
   return (
     <section className="page" aria-labelledby="setlist-title">
       <div className="page-heading setlist-heading">
@@ -374,20 +441,38 @@ function SetlistView({ songs: setlistSongs, onOpen, onRemove, onClear, onBrowse,
 
       {setlistSongs.length > 0 ? (
         <div className="setlist-layout">
-          <ol className="setlist-card">
+          <div>
+            <p className="setlist-order-help">拖曳左側把手調整順序，或使用上下按鈕移動歌曲。</p>
+            <ol className="setlist-card">
             {setlistSongs.map((song, index) => (
-              <li key={song.id}>
-                <GripVertical size={18} className="drag-handle" aria-hidden="true" />
+              <li key={song.id} data-setlist-index={index} className={draggedSongId === song.id ? 'is-dragging' : undefined}>
+                <button
+                  type="button"
+                  className="drag-handle"
+                  aria-label={`拖曳調整 ${song.title} 的順序`}
+                  onPointerDown={(event) => startDrag(event, song)}
+                  onPointerMove={dragSong}
+                  onPointerUp={(event) => finishDrag(event, song)}
+                  onPointerCancel={(event) => finishDrag(event, song)}
+                >
+                  <GripVertical size={20} aria-hidden="true" />
+                </button>
                 <span className="setlist-number">{String(index + 1).padStart(2, '0')}</span>
                 <button type="button" className="setlist-song" onClick={() => onOpen(song)}>
                   <strong>{song.title}</strong>
                   <small>{song.source || song.category} · {song.language || '語言未填'}</small>
                 </button>
                 <span className="setlist-category">{song.category}</span>
+                <span className="setlist-move-actions" aria-label={`${song.title} 排序控制`}>
+                  <button type="button" onClick={() => moveSong(song, index - 1)} disabled={index === 0} aria-label={`將 ${song.title} 往上移`}><ChevronUp size={18} aria-hidden="true" /></button>
+                  <button type="button" onClick={() => moveSong(song, index + 1)} disabled={index === setlistSongs.length - 1} aria-label={`將 ${song.title} 往下移`}><ChevronDown size={18} aria-hidden="true" /></button>
+                </span>
                 <button type="button" className="icon-action" onClick={() => onRemove(song.id)} aria-label={`從歌單移除 ${song.title}`}><X size={18} /></button>
               </li>
             ))}
-          </ol>
+            </ol>
+            <p className="sr-only" aria-live="polite">{orderAnnouncement}</p>
+          </div>
 
           <aside className="rehearsal-note">
             <Presentation size={24} aria-hidden="true" />

@@ -80,6 +80,22 @@ try {
   await desktop.reload({ waitUntil: 'networkidle' })
   await desktop.getByRole('button', { name: /本週歌單/ }).first().click()
   assert(await desktop.getByRole('heading', { name: '本週排練歌單' }).isVisible(), '歌單頁未開啟')
+  await desktop.getByRole('button', { name: '將 天上的門打開 往上移' }).click()
+  assert((await desktop.locator('.setlist-card li').first().locator('.setlist-song strong').textContent()) === '天上的門打開', '往上按鈕沒有更新歌單順序')
+  await desktop.reload({ waitUntil: 'networkidle' })
+  await desktop.getByRole('button', { name: /本週歌單/ }).first().click()
+  assert((await desktop.locator('.setlist-card li').first().locator('.setlist-song strong').textContent()) === '天上的門打開', '調整後的歌單順序沒有儲存')
+  await desktop.getByRole('button', { name: '將 天上的門打開 往下移' }).click()
+  const firstDragHandle = desktop.getByRole('button', { name: '拖曳調整 How Much Do I Love You 的順序' })
+  const firstHandleBox = await firstDragHandle.boundingBox()
+  const secondRowBox = await desktop.locator('.setlist-card li').nth(1).boundingBox()
+  assert(firstHandleBox && secondRowBox, '找不到歌單拖曳位置')
+  await desktop.mouse.move(firstHandleBox.x + firstHandleBox.width / 2, firstHandleBox.y + firstHandleBox.height / 2)
+  await desktop.mouse.down()
+  await desktop.mouse.move(secondRowBox.x + secondRowBox.width / 2, secondRowBox.y + secondRowBox.height / 2, { steps: 5 })
+  await desktop.mouse.up()
+  assert((await desktop.locator('.setlist-card li').first().locator('.setlist-song strong').textContent()) === '天上的門打開', '拖曳把手沒有更新歌單順序')
+  await desktop.getByRole('button', { name: '將 天上的門打開 往下移' }).click()
   await desktop.getByRole('button', { name: '進入現場模式' }).click()
   assert(await desktop.getByRole('heading', { level: 2, name: 'How Much Do I Love You' }).isVisible(), '演出歌單沒有從第一首開始')
   await desktop.screenshot({ path: 'artifacts/live-set-desktop-verified.png', fullPage: false })
@@ -134,6 +150,13 @@ try {
   })
   await mobile.reload({ waitUntil: 'networkidle' })
   await mobile.getByRole('button', { name: /本週歌單/ }).click()
+  for (const accessibleName of ['拖曳調整 How Much Do I Love You 的順序', '將 天上的門打開 往上移', '從歌單移除 How Much Do I Love You']) {
+    const box = await mobile.getByRole('button', { name: accessibleName }).boundingBox()
+    assert(box && box.width >= 44 && box.height >= 44, `${accessibleName} 的觸控範圍小於 44px`)
+  }
+  await mobile.getByRole('button', { name: '將 天上的門打開 往上移' }).click()
+  assert((await mobile.locator('.setlist-card li').first().locator('.setlist-song strong').textContent()) === '天上的門打開', '手機版無法調整歌單順序')
+  await mobile.getByRole('button', { name: '將 天上的門打開 往下移' }).click()
   await mobile.getByRole('button', { name: '進入現場模式' }).click()
   await mobile.screenshot({ path: 'artifacts/live-set-mobile-verified.png', fullPage: false })
   await mobile.evaluate(() => {
@@ -162,7 +185,7 @@ try {
     await page.close()
   }
 
-  console.log('瀏覽器驗證完成：207 首資料、演出歌單滑動切歌、即時轉調、50% 字體縮放、Key 記憶、離線快取、歌曲詳情、管理中心，以及手機／平板直橫向皆通過。')
+  console.log('瀏覽器驗證完成：207 首資料、歌單排序與儲存、演出歌單滑動切歌、即時轉調、50% 字體縮放、Key 記憶、離線快取、歌曲詳情、管理中心，以及手機／平板直橫向皆通過。')
 } finally {
   await browser.close()
 }
