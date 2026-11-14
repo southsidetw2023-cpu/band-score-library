@@ -31,6 +31,31 @@ try {
   }
   await desktop.getByRole('button', { name: '關閉歌曲資料' }).click()
   await search.fill('')
+
+  await search.fill('How Much Do I Love You')
+  await desktop.waitForFunction(() => document.querySelectorAll('.song-card').length === 1)
+  await desktop.locator('.song-card-main').click()
+  assert(await desktop.getByText('D', { exact: true }).isVisible(), '測試歌曲未顯示原調 D')
+  await desktop.getByRole('button', { name: /現場和弦譜/ }).click()
+  assert(await desktop.getByRole('heading', { level: 2, name: 'How Much Do I Love You' }).isVisible(), '現場和弦譜未開啟')
+  assert((await desktop.locator('.key-stepper strong').textContent()) === 'D', '現場和弦譜初始 Key 應為 D')
+  await desktop.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().waitFor()
+  assert(await desktop.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().isVisible(), '原調和弦內容未渲染')
+  await desktop.getByRole('button', { name: '升高一個半音' }).click()
+  await desktop.waitForFunction(() => document.querySelector('.key-stepper strong')?.textContent === 'Eb')
+  await desktop.locator('.performance-sheet .chord', { hasText: 'Abmaj7' }).first().waitFor()
+  assert(await desktop.locator('.performance-sheet .chord', { hasText: 'Abmaj7' }).first().isVisible(), '升 Key 後和弦未同步轉調')
+  await desktop.getByRole('button', { name: '關閉現場和弦譜' }).click()
+
+  await desktop.locator('.song-card-main').click()
+  await desktop.getByRole('button', { name: /現場和弦譜/ }).click()
+  assert((await desktop.locator('.key-stepper strong').textContent()) === 'Eb', '現場模式未記住最後選擇的 Key')
+  await desktop.getByRole('button', { name: '恢復原調' }).click()
+  await desktop.waitForFunction(() => document.querySelector('.key-stepper strong')?.textContent === 'D')
+  await desktop.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().waitFor()
+  await desktop.screenshot({ path: 'artifacts/live-chords-desktop-verified.png', fullPage: false })
+  await desktop.getByRole('button', { name: '關閉現場和弦譜' }).click()
+  await search.fill('')
   await desktop.screenshot({ path: 'artifacts/library-desktop-verified.png', fullPage: false })
 
   await desktop.getByRole('button', { name: /本週歌單/ }).first().click()
@@ -43,7 +68,27 @@ try {
   assert(await mobile.getByRole('heading', { name: '全部樂譜' }).isVisible(), '手機版未顯示樂譜庫標題')
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
   assert(!overflow, '手機版出現水平捲動')
+  await mobile.getByPlaceholder('搜尋歌名、出處、語言或年份').fill('How Much Do I Love You')
+  await mobile.waitForFunction(() => document.querySelectorAll('.song-card').length === 1)
+  await mobile.locator('.song-card-main').click()
+  await mobile.getByRole('button', { name: /現場和弦譜/ }).click()
+  await mobile.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().waitFor()
+  const mobileLiveOverflow = await mobile.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
+  assert(!mobileLiveOverflow, '手機現場模式出現水平捲動')
+  for (const accessibleName of ['降低一個半音', '升高一個半音', '關閉現場和弦譜']) {
+    const box = await mobile.getByRole('button', { name: accessibleName }).boundingBox()
+    assert(box && box.width >= 44 && box.height >= 44, `${accessibleName} 的觸控範圍小於 44px`)
+  }
+  await mobile.screenshot({ path: 'artifacts/live-chords-mobile-verified.png', fullPage: false })
+  await mobile.getByRole('button', { name: '關閉現場和弦譜' }).click()
   await mobile.screenshot({ path: 'artifacts/library-mobile-verified.png', fullPage: false })
+
+  await mobile.evaluate(() => navigator.serviceWorker.ready)
+  await mobile.reload({ waitUntil: 'networkidle' })
+  await mobile.context().setOffline(true)
+  await mobile.reload({ waitUntil: 'domcontentloaded' })
+  assert(await mobile.getByRole('heading', { name: '全部樂譜' }).isVisible(), '離線時無法開啟已快取的合奏庫')
+  await mobile.context().setOffline(false)
 
   for (const viewport of [{ width: 375, height: 812 }, { width: 844, height: 390 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }]) {
     const page = await browser.newPage({ viewport, isMobile: viewport.width < 900 })
@@ -53,7 +98,7 @@ try {
     await page.close()
   }
 
-  console.log('瀏覽器驗證完成：207 首資料、分批載入、搜尋、歌曲詳情、歌單、管理中心，以及手機／平板直橫向皆通過。')
+  console.log('瀏覽器驗證完成：207 首資料、即時轉調、Key 記憶、離線快取、歌曲詳情、歌單、管理中心，以及手機／平板直橫向皆通過。')
 } finally {
   await browser.close()
 }

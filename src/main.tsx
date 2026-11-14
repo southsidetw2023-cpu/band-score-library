@@ -20,16 +20,22 @@ import {
   ListMusic,
   LoaderCircle,
   LockKeyhole,
+  Minus,
   Music2,
   Plus,
+  Presentation,
+  RotateCcw,
   Search,
   ShieldCheck,
   Trash2,
   UserCheck,
   Users,
   X,
+  ZoomIn,
+  ZoomOut,
   type LucideIcon,
 } from 'lucide-react'
+import { getChordSheet, type ChordSheetData } from './data/chord-sheets'
 import songsData from './data/songs.generated.json'
 import type { Song, ViewName } from './types'
 import './styles.css'
@@ -41,6 +47,13 @@ if (previewTheme && previewThemes.has(previewTheme)) {
 }
 
 const songs = (songsData as Song[]).sort((a, b) => a.title.localeCompare(b.title, 'zh-Hant'))
+const chromaticKeys = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'] as const
+
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`)
+  })
+}
 
 const navItems: Array<{ id: ViewName; label: string; helper: string; icon: LucideIcon }> = [
   { id: 'library', label: '樂譜庫', helper: '搜尋與瀏覽', icon: LibraryBig },
@@ -68,6 +81,7 @@ function App() {
   const [category, setCategory] = useState<'全部' | Song['category']>('全部')
   const [availability, setAvailability] = useState<'全部' | '已有歌譜' | '待補歌譜'>('全部')
   const [selectedSong, setSelectedSong] = useState<Song | null>(null)
+  const [liveSong, setLiveSong] = useState<Song | null>(null)
   const [setlistIds, setSetlistIds] = useState<string[]>(getInitialSetlist)
 
   useEffect(() => {
@@ -98,6 +112,11 @@ function App() {
 
   function removeFromSetlist(songId: string) {
     setSetlistIds((current) => current.filter((id) => id !== songId))
+  }
+
+  function openLiveSheet(song: Song) {
+    setSelectedSong(null)
+    setLiveSong(song)
   }
 
   return (
@@ -137,7 +156,8 @@ function App() {
       </main>
 
       <MobileNav view={view} setView={setView} setlistCount={setlistIds.length} />
-      <SongDialog song={selectedSong} onClose={() => setSelectedSong(null)} onAdd={addToSetlist} inSetlist={selectedSong ? setlistIds.includes(selectedSong.id) : false} />
+      <SongDialog song={selectedSong} onClose={() => setSelectedSong(null)} onAdd={addToSetlist} onOpenLive={openLiveSheet} inSetlist={selectedSong ? setlistIds.includes(selectedSong.id) : false} />
+      <PerformanceDialog song={liveSong} onClose={() => setLiveSong(null)} />
     </div>
   )
 }
@@ -475,8 +495,9 @@ function MobileNav({ view, setView, setlistCount }: { view: ViewName; setView: (
   )
 }
 
-function SongDialog({ song, onClose, onAdd, inSetlist }: { song: Song | null; onClose: () => void; onAdd: (song: Song) => void; inSetlist: boolean }) {
+function SongDialog({ song, onClose, onAdd, onOpenLive, inSetlist }: { song: Song | null; onClose: () => void; onAdd: (song: Song) => void; onOpenLive: (song: Song) => void; inSetlist: boolean }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const chordSheet = song ? getChordSheet(song.id) : null
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -498,12 +519,19 @@ function SongDialog({ song, onClose, onAdd, inSetlist }: { song: Song | null; on
           <div className="detail-facts">
             <span><CalendarDays size={17} aria-hidden="true" /><small>年份</small><strong>{song.year || '未填'}</strong></span>
             <span><Languages size={17} aria-hidden="true" /><small>語言</small><strong>{song.language || '未填'}</strong></span>
-            <span><Music2 size={17} aria-hidden="true" /><small>調性</small><strong>{song.key || '待補'}</strong></span>
+            <span><Music2 size={17} aria-hidden="true" /><small>調性</small><strong>{chordSheet?.originalKey || song.key || '待補'}</strong></span>
           </div>
 
           <section className="resource-section">
             <h3>歌曲資源</h3>
             <div className="resource-list">
+              {chordSheet && (
+                <button type="button" className="resource-link live-resource" onClick={() => onOpenLive(song)}>
+                  <Presentation size={19} aria-hidden="true" />
+                  <span><strong>現場和弦譜</strong><small>即時調整 Key</small></span>
+                  <ChevronRight size={16} aria-hidden="true" />
+                </button>
+              )}
               <ResourceLink href={song.scoreUrl} icon={FileMusic} title="歌譜" helper={song.scoreUrl ? '在新分頁開啟' : '尚未提供'} />
               <ResourceLink href={song.lyricsUrl} icon={FileText} title="中文歌詞" helper={song.lyricsUrl ? '開啟原始連結' : '尚未提供'} />
               <ResourceLink href={song.songUrl} icon={CirclePlay} title="歌曲參考" helper={song.songUrl ? 'YouTube 或音訊' : '尚未提供'} />
@@ -517,6 +545,129 @@ function SongDialog({ song, onClose, onAdd, inSetlist }: { song: Song | null; on
           </section>
 
           <button type="button" className="button button-primary button-full" onClick={() => onAdd(song)} disabled={inSetlist}>{inSetlist ? <Check size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}{inSetlist ? '已加入本週歌單' : '加入本週歌單'}</button>
+        </div>
+      )}
+    </dialog>
+  )
+}
+
+function normalizeTransposeOffset(offset: number) {
+  if (offset > 6) return -5
+  if (offset < -5) return 6
+  return offset
+}
+
+function currentKey(originalKey: string, offset: number) {
+  const aliases: Record<string, number> = { 'C#': 1, 'D#': 3, Gb: 6, 'G#': 8, 'A#': 10 }
+  const originalIndex = aliases[originalKey] ?? chromaticKeys.indexOf(originalKey as typeof chromaticKeys[number])
+  return chromaticKeys[(originalIndex + offset + 120) % 12]
+}
+
+function transposeLabel(offset: number) {
+  if (offset === 0) return '原調'
+  return `${offset > 0 ? '+' : ''}${offset} 半音`
+}
+
+function PerformanceDialog({ song, onClose }: { song: Song | null; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const chordSheet = song ? getChordSheet(song.id) : null
+  const [offset, setOffset] = useState(0)
+  const [fontScale, setFontScale] = useState(() => Number(window.localStorage.getItem('ensemble-live-font-scale')) || 1)
+  const [renderedSheet, setRenderedSheet] = useState({ songId: '', offset: 0, html: '' })
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+    if (song && !dialog.open) dialog.showModal()
+    if (!song && dialog.open) dialog.close()
+  }, [song])
+
+  useEffect(() => {
+    if (!song) return
+    const stored = Number(window.localStorage.getItem(`ensemble-live-transpose:${song.id}`))
+    setOffset(Number.isFinite(stored) ? normalizeTransposeOffset(stored) : 0)
+  }, [song])
+
+  function updateOffset(nextOffset: number) {
+    if (!song) return
+    const normalized = normalizeTransposeOffset(nextOffset)
+    setOffset(normalized)
+    window.localStorage.setItem(`ensemble-live-transpose:${song.id}`, String(normalized))
+  }
+
+  function updateFontScale(nextScale: number) {
+    const normalized = Math.min(1.4, Math.max(0.9, Math.round(nextScale * 10) / 10))
+    setFontScale(normalized)
+    window.localStorage.setItem('ensemble-live-font-scale', String(normalized))
+  }
+
+  useEffect(() => {
+    if (!song) return
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === '+' || event.key === '=') updateOffset(offset + 1)
+      if (event.key === '-') updateOffset(offset - 1)
+      if (event.key === '0') updateOffset(0)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [offset, song])
+
+  useEffect(() => {
+    if (!chordSheet) {
+      setRenderedSheet({ songId: '', offset: 0, html: '' })
+      return
+    }
+
+    let cancelled = false
+    void import('chordsheetjs').then(({ ChordProParser, HtmlDivFormatter }) => {
+      const targetKey = currentKey(chordSheet.originalKey, offset)
+      const accidental = targetKey.includes('b') ? 'b' : '#'
+      const parsed = new ChordProParser().parse(chordSheet.chordPro)
+      const transposed = offset === 0 ? parsed : parsed.transpose(offset, { accidental, normalizeChordSuffix: false })
+      const html = new HtmlDivFormatter({ normalizeChordSuffix: false }).format(transposed)
+      if (!cancelled) setRenderedSheet({ songId: chordSheet.songId, offset, html })
+    })
+
+    return () => { cancelled = true }
+  }, [chordSheet, offset])
+
+  const targetKey = chordSheet ? currentKey(chordSheet.originalKey, offset) : ''
+  const visibleSheet = song && renderedSheet.songId === song.id && renderedSheet.offset === offset ? renderedSheet.html : ''
+
+  return (
+    <dialog ref={dialogRef} className="performance-dialog" onClose={onClose} aria-labelledby="performance-title">
+      {song && chordSheet && (
+        <div className="performance-shell">
+          <header className="performance-header">
+            <div className="performance-title-row">
+              <div>
+                <span className="performance-kicker">現場模式</span>
+                <h2 id="performance-title">{song.title}</h2>
+                <p>原調 {chordSheet.originalKey} · {chordSheet.sourceLabel}</p>
+              </div>
+              <button type="button" className="performance-close" onClick={() => dialogRef.current?.close()} aria-label="關閉現場和弦譜"><X size={23} /></button>
+            </div>
+
+            <div className="performance-toolbar">
+              <div className="key-stepper" aria-label="調整歌曲 Key">
+                <button type="button" onClick={() => updateOffset(offset - 1)} aria-label="降低一個半音"><Minus size={24} /></button>
+                <div aria-live="polite"><small>目前 Key</small><strong>{targetKey}</strong><span>{transposeLabel(offset)}</span></div>
+                <button type="button" onClick={() => updateOffset(offset + 1)} aria-label="升高一個半音"><Plus size={24} /></button>
+              </div>
+              <button type="button" className="performance-tool" onClick={() => updateOffset(0)} disabled={offset === 0}><RotateCcw size={18} aria-hidden="true" /><span>恢復原調</span></button>
+              <div className="font-stepper" aria-label="調整和弦譜字體大小">
+                <button type="button" onClick={() => updateFontScale(fontScale - 0.1)} disabled={fontScale <= 0.9} aria-label="縮小字體"><ZoomOut size={19} /></button>
+                <span>{Math.round(fontScale * 100)}%</span>
+                <button type="button" onClick={() => updateFontScale(fontScale + 0.1)} disabled={fontScale >= 1.4} aria-label="放大字體"><ZoomIn size={19} /></button>
+              </div>
+            </div>
+          </header>
+
+          <main className="performance-sheet-wrap" style={{ '--sheet-scale': fontScale } as React.CSSProperties} aria-busy={!visibleSheet}>
+            {visibleSheet
+              ? <div className="performance-sheet" dangerouslySetInnerHTML={{ __html: visibleSheet }} />
+              : <div className="performance-loading"><LoaderCircle size={24} className="spin" aria-hidden="true" />正在準備和弦譜</div>}
+          </main>
         </div>
       )}
     </dialog>
