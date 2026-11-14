@@ -83,7 +83,9 @@ const rowOverrides = {
 
 function cleanText(text) {
   return text
+    .normalize('NFKC')
     .replace(/\s+/g, ' ')
+    .replace(/\bY\s+our\b/g, 'Your')
     .replace(/\bC\s+horus\b/gi, 'Chorus')
     .replace(/\b([A-G](?:#|b)?)\s+(s\s*us|m\s*aj|m\s*in)\s*(\d*)/g, (_, root, suffix, number) => `${root}${suffix.replace(/\s/g, '')}${number}`)
     .replace(/([A-G])\s+([#b])/g, '$1$2')
@@ -110,6 +112,8 @@ function classify(text) {
   if (section && tokens.length <= 5) return { type: 'section', text: section[0].replace(/\s+/g, ' ') }
   if (chordTokens > 0 && musicalRatio >= 0.5) return { type: 'chords', text: normalized }
   if (/^(?:key\s*[:：]|https?:\/\/|\d{4}[/-]\d|\d{4}\/)/i.test(normalized)) return null
+  if (/copyright|all rights reserved|版權所有/i.test(normalized)) return null
+  if (/^[#b0-9\s|/().,:'"+_-]+$/i.test(normalized)) return null
   return { type: 'lyrics', text: normalized }
 }
 
