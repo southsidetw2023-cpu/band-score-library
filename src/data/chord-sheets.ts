@@ -129,7 +129,52 @@ Praise cause there's nobody greater than You
 {comment: Ending}
 [Am7] / / / | [F] / / / | [C] / / / | [G] / / /`
 
+const heavenOpened = String.raw`{key: A}
+
+{comment: Intro}
+[A] / / / | [A] / / / | [D] / / / | [D] / / /
+[A] / / / | [A] / / / | [D] / / / | [D] / / /
+
+{start_of_verse: Verse 1}
+[A]天上的門打開　[D]有聲音發出來
+[F#m7]祢是我心所愛　[E]天父如此告白　[D]
+[A]主祢就是真光　[D]祢向我們照亮
+[F#m7]我們已經看見　[E]以色列的榮光　[D]
+{end_of_verse}
+
+{start_of_chorus: Pre-Chorus}
+[D]將一切榮耀　[E]歸於神
+[F#m7]在至高處讚美　[E/G#] [A]
+[Bm7]在地上有平安　[A/C#]到永遠　[D]
+{end_of_chorus}
+
+{start_of_verse: Verse 2}
+[A]天上的門打開　[D]有聲音發出來
+[F#m7]祢是我心所愛　[E]天父如此告白　[D]
+[A]得勝的主耶穌　[D]戰勝死亡的主
+[F#m7]所有黑暗權勢　[E]耶穌已經破除　[D]
+{end_of_verse}
+
+{start_of_chorus: Chorus}
+[A]耶穌我們高舉祢名　[D]祢是成就應許的主
+[F#m7]主我們讚美祢作為　[E]祢是萬國唯一盼望　[D]
+[A]耶穌我們高舉祢名　[D]祢作王掌權到永遠
+[F#m7]受造物都來高舉祢　[E]天上地下都敬拜祢　[D]
+{end_of_chorus}
+
+{comment: Outro}
+[A]Oh oh oh oh oh　[D]Oh oh oh oh oh
+[F#m7]Oh oh oh oh oh　[E/G#] [A]
+[Bm7]Oh oh oh oh oh　[A/C#] [D]
+{comment: End on D}`
+
 export const chordSheets: Record<string, ChordSheetData> = {
+  '讚美-073-天上的門打開': {
+    songId: '讚美-073-天上的門打開',
+    originalKey: 'A',
+    sourceLabel: '依現有 PDF 歌譜整理',
+    chordPro: heavenOpened,
+  },
   '讚美-064-praise': {
     songId: '讚美-064-praise',
     originalKey: 'C',

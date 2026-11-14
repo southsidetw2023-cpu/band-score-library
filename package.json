@@ -11,6 +11,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "check": "tsc -b --pretty false",
     "check:data": "node scripts/check-data.mjs",
+    "prepare:chords": "node scripts/prepare-chord-sheet-batch.mjs",
     "check:browser": "node scripts/check-browser.mjs"
   },
   "dependencies": {
