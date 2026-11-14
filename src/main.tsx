@@ -568,6 +568,26 @@ function transposeLabel(offset: number) {
   return `${offset > 0 ? '+' : ''}${offset} 半音`
 }
 
+function markRhythmRows(html: string) {
+  const container = document.createElement('div')
+  container.innerHTML = html
+
+  container.querySelectorAll<HTMLElement>('.row').forEach((row) => {
+    const lyrics = Array.from(row.querySelectorAll<HTMLElement>('.lyrics'))
+      .map((element) => element.textContent ?? '')
+      .join('')
+      .trim()
+    const hasChord = Array.from(row.querySelectorAll<HTMLElement>('.chord'))
+      .some((element) => Boolean(element.textContent?.trim()))
+
+    if (hasChord && lyrics.length > 0 && /^[\/|\s]+$/.test(lyrics)) {
+      row.classList.add('rhythm-row')
+    }
+  })
+
+  return container.innerHTML
+}
+
 function PerformanceDialog({ song, onClose }: { song: Song | null; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const chordSheet = song ? getChordSheet(song.id) : null
@@ -624,7 +644,7 @@ function PerformanceDialog({ song, onClose }: { song: Song | null; onClose: () =
       const accidental = targetKey.includes('b') ? 'b' : '#'
       const parsed = new ChordProParser().parse(chordSheet.chordPro)
       const transposed = offset === 0 ? parsed : parsed.transpose(offset, { accidental, normalizeChordSuffix: false })
-      const html = new HtmlDivFormatter({ normalizeChordSuffix: false }).format(transposed)
+      const html = markRhythmRows(new HtmlDivFormatter({ normalizeChordSuffix: false }).format(transposed))
       if (!cancelled) setRenderedSheet({ songId: chordSheet.songId, offset, html })
     })
 

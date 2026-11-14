@@ -370,6 +370,11 @@ button:active:not(:disabled), a:active { opacity: 0.82; }
 .performance-sheet .chord:empty { display: none; }
 .performance-sheet .lyrics { min-height: 1.45em; color: var(--ink); font-size: 1.04em; font-weight: 500; white-space: pre-wrap; }
 .performance-sheet .row:has(.chord:empty) .lyrics { color: var(--ink-soft); font-size: 0.86em; font-weight: 400; }
+.performance-sheet .rhythm-row { align-items: center; gap: 0.32em; line-height: 1.35; }
+.performance-sheet .rhythm-row .column { display: block; }
+.performance-sheet .rhythm-row .chord,
+.performance-sheet .rhythm-row .lyrics { min-height: 0; font-size: 1em; line-height: inherit; }
+.performance-sheet .rhythm-row .lyrics { color: var(--ink-soft); font-weight: 500; white-space: pre; }
 .performance-sheet .label,
 .performance-sheet .comment { margin: 0.9em 0 0.35em; color: var(--ink); font-size: 0.82em; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
 .performance-sheet .label { padding: 0.28em 0.62em; border-radius: 999px; background: var(--primary-soft); color: var(--primary); }

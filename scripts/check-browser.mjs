@@ -9,6 +9,18 @@ function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
 
+async function assertRhythmRowsInline(page, label) {
+  const rows = page.locator('.performance-sheet .rhythm-row')
+  assert((await rows.count()) === 4, `${label}應有 4 列單行節奏和弦`)
+  const isInline = await rows.first().evaluate((row) => {
+    const visibleItems = Array.from(row.querySelectorAll('.chord, .lyrics'))
+      .filter((element) => element.textContent?.trim())
+      .map((element) => element.getBoundingClientRect().top)
+    return Math.max(...visibleItems) - Math.min(...visibleItems) < 3
+  })
+  assert(isInline, `${label}和弦與拍點仍被拆成上下兩層`)
+}
+
 await mkdir('artifacts', { recursive: true })
 
 try {
@@ -41,6 +53,7 @@ try {
   assert((await desktop.locator('.key-stepper strong').textContent()) === 'D', '現場和弦譜初始 Key 應為 D')
   await desktop.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().waitFor()
   assert(await desktop.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().isVisible(), '原調和弦內容未渲染')
+  await assertRhythmRowsInline(desktop, '桌面版')
   await desktop.getByRole('button', { name: '升高一個半音' }).click()
   await desktop.waitForFunction(() => document.querySelector('.key-stepper strong')?.textContent === 'Eb')
   await desktop.locator('.performance-sheet .chord', { hasText: 'Abmaj7' }).first().waitFor()
@@ -73,6 +86,7 @@ try {
   await mobile.locator('.song-card-main').click()
   await mobile.getByRole('button', { name: /現場和弦譜/ }).click()
   await mobile.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().waitFor()
+  await assertRhythmRowsInline(mobile, '手機版')
   const mobileLiveOverflow = await mobile.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
   assert(!mobileLiveOverflow, '手機現場模式出現水平捲動')
   for (const accessibleName of ['降低一個半音', '升高一個半音', '關閉現場和弦譜']) {
