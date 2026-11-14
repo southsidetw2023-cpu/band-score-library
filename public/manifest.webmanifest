@@ -1,6 +1,6 @@
 {
-  "name": "合奏庫｜樂團樂譜管理",
-  "short_name": "合奏庫",
+  "name": "PPC 敬拜團歌單",
+  "short_name": "PPC 歌單",
   "description": "PPC 敬拜團的樂譜庫與現場和弦譜。",
   "lang": "zh-Hant",
   "start_url": "./",
@@ -10,10 +10,10 @@
   "theme_color": "#111113",
   "icons": [
     {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "ppc-worship-logo.png",
+      "sizes": "1179x1129",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

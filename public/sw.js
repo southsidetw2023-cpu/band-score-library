@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ensemble-live-v5'
+const CACHE_NAME = 'ppc-worship-setlist-v7'
 const scopeRoot = new URL('./', self.registration.scope).href
 
 async function primeAppShell() {
@@ -34,6 +34,13 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
+
+  // API responses are live shared state. Never serve or store them from the
+  // app-shell cache, especially when a mobile browser resumes from background.
+  if (url.pathname.includes('/api/')) {
+    event.respondWith(fetch(request))
+    return
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(

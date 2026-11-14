@@ -27,7 +27,6 @@ import {
   LogIn,
   LogOut,
   Minus,
-  Music2,
   Plus,
   Presentation,
   RotateCcw,
@@ -146,7 +145,9 @@ function App() {
   const loadRemoteSetlist = useCallback(async () => {
     if (pendingSetlistWritesRef.current > 0 || Date.now() < holdRemoteSetlistUntilRef.current) return
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}api/setlist`, { cache: 'no-store' })
+      const url = new URL(`${import.meta.env.BASE_URL}api/setlist`, window.location.href)
+      url.searchParams.set('_sync', String(Date.now()))
+      const response = await fetch(url, { cache: 'no-store' })
       const payload = await response.json() as { setlist?: RemoteSetlist; error?: string }
       if (!response.ok || !payload.setlist) throw new Error(payload.error || '無法讀取團隊歌單。')
       applyRemoteSetlist(payload.setlist)
@@ -160,13 +161,21 @@ function App() {
     const interval = window.setInterval(() => {
       if (document.visibilityState === 'visible') void loadRemoteSetlist()
     }, 2_000)
-    const refresh = () => void loadRemoteSetlist()
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void loadRemoteSetlist()
+    }
     window.addEventListener('focus', refresh)
+    window.addEventListener('pageshow', refresh)
+    window.addEventListener('online', refresh)
     document.addEventListener('visibilitychange', refresh)
+    document.addEventListener('resume', refresh)
     return () => {
       window.clearInterval(interval)
       window.removeEventListener('focus', refresh)
+      window.removeEventListener('pageshow', refresh)
+      window.removeEventListener('online', refresh)
       document.removeEventListener('visibilitychange', refresh)
+      document.removeEventListener('resume', refresh)
     }
   }, [loadRemoteSetlist])
 
@@ -325,10 +334,10 @@ function Sidebar({ view, setView, setlistCount }: { view: ViewName; setView: (vi
   return (
     <aside className="sidebar" aria-label="主要導覽">
       <div className="brand">
-        <span className="brand-mark" aria-hidden="true"><Music2 size={22} strokeWidth={2.4} /></span>
+        <span className="brand-mark" aria-hidden="true"><img src={`${import.meta.env.BASE_URL}ppc-worship-logo.png`} alt="" /></span>
         <span>
-          <strong>合奏庫</strong>
-          <small>ENSEMBLE</small>
+          <strong>PPC 敬拜團歌單</strong>
+          <small>PPC WORSHIP</small>
         </span>
       </div>
 
@@ -354,8 +363,8 @@ function Topbar({ setView, auth, share }: { setView: (view: ViewName) => void; a
   return (
     <header className="topbar">
       <div>
-        <p className="eyebrow">PPC 敬拜團</p>
-        <h1>團隊樂譜工作台</h1>
+        <p className="eyebrow">PPC WORSHIP TEAM</p>
+        <h1>PPC 敬拜團歌單</h1>
       </div>
       <div className="topbar-actions">
         <button type="button" className="button button-primary" onClick={() => setView('admin')}>
