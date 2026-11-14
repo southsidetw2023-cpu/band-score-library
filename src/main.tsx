@@ -558,12 +558,12 @@ function AdminView({ auth, share }: { auth: AuthState; share: ShareAccessState }
   const canUpload = Boolean(auth.user?.canUpload || share.active)
   const accessHeaders = useMemo(() => uploadAuthorizationHeaders(auth.credential, share.token), [auth.credential, share.token])
 
-  const loadUploads = useCallback(async () => {
+  const loadUploads = useCallback(async (silent = false) => {
     if (!auth.credential && !share.token) {
       setUploads([])
       return
     }
-    setLoadingUploads(true)
+    if (!silent) setLoadingUploads(true)
     try {
       const response = await fetch(`${import.meta.env.BASE_URL}api/uploads`, {
         headers: accessHeaders,
@@ -574,11 +574,25 @@ function AdminView({ auth, share }: { auth: AuthState; share: ShareAccessState }
     } catch (reason) {
       setUploadError(reason instanceof Error ? reason.message : '無法讀取上傳紀錄。')
     } finally {
-      setLoadingUploads(false)
+      if (!silent) setLoadingUploads(false)
     }
   }, [accessHeaders, auth.credential, share.token])
 
-  useEffect(() => { void loadUploads() }, [loadUploads])
+  useEffect(() => {
+    void loadUploads()
+    if (!auth.credential && !share.token) return
+
+    const refresh = () => { void loadUploads(true) }
+    const timer = window.setInterval(refresh, 2_000)
+    const refreshWhenVisible = () => { if (document.visibilityState === 'visible') refresh() }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [auth.credential, loadUploads, share.token])
 
   function selectFile(file: File | undefined) {
     setUploadError('')

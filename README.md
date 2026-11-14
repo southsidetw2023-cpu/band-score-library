@@ -21,6 +21,7 @@ GitHub Pages 備用網址：<https://southsidetw2023-cpu.github.io/band-score-li
 - Google 管理者登入、免登入分享上傳網址與網址輪替
 - PDF、JPG、PNG 私有檔案上傳（單檔上限 20 MB）
 - 上傳檔案的類型、大小與伺服器端身分驗證
+- 已授權頁面每 2 秒背景同步上傳清單，切回分頁時也會立即更新
 - 手機、平板與桌面響應式介面
 - 網站介面與現場和弦譜離線快取
 
