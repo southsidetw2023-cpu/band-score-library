@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ppc-worship-setlist-v7'
+const CACHE_NAME = 'ppc-worship-setlist-v8'
 const scopeRoot = new URL('./', self.registration.scope).href
 
 async function primeAppShell() {
@@ -24,7 +24,9 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .then((clients) => Promise.all(clients.map((client) => client.navigate(client.url)))),
   )
 })
 
@@ -34,6 +36,13 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
+
+  // Installation metadata must always reflect the current app name and icon.
+  // Returning a cached manifest is what caused iOS to keep showing the old name.
+  if (url.pathname.endsWith('/manifest.webmanifest') || url.pathname.endsWith('/ppc-worship-logo.png')) {
+    event.respondWith(fetch(new Request(request, { cache: 'reload' })))
+    return
+  }
 
   // API responses are live shared state. Never serve or store them from the
   // app-shell cache, especially when a mobile browser resumes from background.
