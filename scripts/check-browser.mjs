@@ -23,6 +23,12 @@ try {
   assert((await desktop.locator('.song-card').count()) === 2, '搜尋 Follow 應顯示兩個跨分類結果')
   await desktop.locator('.song-card-main').first().click()
   assert(await desktop.getByRole('dialog').isVisible(), '歌曲詳細資料視窗未開啟')
+  const resourceLinks = desktop.getByRole('dialog').locator('.resource-link[href]')
+  assert((await resourceLinks.count()) > 0, '歌曲詳細資料中沒有可開啟的資源連結')
+  for (let index = 0; index < await resourceLinks.count(); index += 1) {
+    const href = await resourceLinks.nth(index).getAttribute('href')
+    assert(/^https?:\/\//i.test(href ?? ''), `歌曲資源連結不是有效網址：${href}`)
+  }
   await desktop.getByRole('button', { name: '關閉歌曲資料' }).click()
   await search.fill('')
   await desktop.screenshot({ path: 'artifacts/library-desktop-verified.png', fullPage: false })

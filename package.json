@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "import:data": "node scripts/import-sheet.mjs",
+    "import:links": "node scripts/apply-xlsx-links.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "check": "tsc -b --pretty false",
+    "check:data": "node scripts/check-data.mjs",
     "check:browser": "node scripts/check-browser.mjs"
   },
   "dependencies": {

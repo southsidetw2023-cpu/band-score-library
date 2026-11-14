@@ -30,4 +30,10 @@ npm run import:data
 npm run dev
 ```
 
+Google Sheet 的 CSV 匯出不包含儲存格超連結。更新資料後，需將試算表匯出為 XLSX，再執行：
+
+```bash
+npm run import:links -- /path/to/song-list.xlsx
+```
+
 正式串接外部服務前，先確認資料授權、檔案分享範圍與備份策略。

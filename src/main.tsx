@@ -504,7 +504,7 @@ function SongDialog({ song, onClose, onAdd, inSetlist }: { song: Song | null; on
           <section className="resource-section">
             <h3>歌曲資源</h3>
             <div className="resource-list">
-              <ResourceLink href={song.scoreUrl} icon={FileMusic} title="歌譜" helper={song.scoreUrl ? '開啟原始連結' : '尚未提供'} />
+              <ResourceLink href={song.scoreUrl} icon={FileMusic} title="歌譜" helper={song.scoreUrl ? '在新分頁開啟' : '尚未提供'} />
               <ResourceLink href={song.lyricsUrl} icon={FileText} title="中文歌詞" helper={song.lyricsUrl ? '開啟原始連結' : '尚未提供'} />
               <ResourceLink href={song.songUrl} icon={CirclePlay} title="歌曲參考" helper={song.songUrl ? 'YouTube 或音訊' : '尚未提供'} />
               <ResourceLink href={song.harmonyUrl} icon={Music2} title="和聲／合音" helper={song.harmonyUrl ? '開啟練習資源' : '尚未提供'} />
