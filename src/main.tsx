@@ -43,7 +43,7 @@ import {
 } from 'lucide-react'
 import { getChordSheet, type ChordSheetData } from './data/chord-sheets'
 import { getStructuredSheet, type StructuredSheetData } from './data/structured-sheets'
-import { GoogleSignInButton, useGoogleAuth, type AuthState } from './auth'
+import { GoogleSignInButton, uploadAuthorizationHeaders, useGoogleAuth, useShareAccess, type AuthState, type ShareAccessState } from './auth'
 import songsData from './data/songs.generated.json'
 import type { Song, ViewName } from './types'
 import './styles.css'
@@ -101,7 +101,8 @@ function getInitialSetlist() {
 
 function App() {
   const auth = useGoogleAuth()
-  const [view, setView] = useState<ViewName>('library')
+  const share = useShareAccess()
+  const [view, setView] = useState<ViewName>(() => share.active ? 'admin' : 'library')
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
   const [category, setCategory] = useState<'全部' | Song['category']>('全部')
@@ -169,7 +170,7 @@ function App() {
       <Sidebar view={view} setView={setView} setlistCount={setlistIds.length} />
 
       <main className="main-content" id="main-content">
-        <Topbar setView={setView} auth={auth} />
+        <Topbar setView={setView} auth={auth} share={share} />
 
         {view === 'library' && (
           <LibraryView
@@ -198,7 +199,7 @@ function App() {
           />
         )}
 
-        {view === 'admin' && <AdminView auth={auth} />}
+        {view === 'admin' && <AdminView auth={auth} share={share} />}
       </main>
 
       <MobileNav view={view} setView={setView} setlistCount={setlistIds.length} />
@@ -237,7 +238,7 @@ function Sidebar({ view, setView, setlistCount }: { view: ViewName; setView: (vi
   )
 }
 
-function Topbar({ setView, auth }: { setView: (view: ViewName) => void; auth: AuthState }) {
+function Topbar({ setView, auth, share }: { setView: (view: ViewName) => void; auth: AuthState; share: ShareAccessState }) {
   return (
     <header className="topbar">
       <div>
@@ -253,6 +254,10 @@ function Topbar({ setView, auth }: { setView: (view: ViewName) => void; auth: Au
             <span className="profile-icon">{auth.user.picture ? <img src={auth.user.picture} alt="" referrerPolicy="no-referrer" /> : <CircleUserRound size={21} aria-hidden="true" />}</span>
             <span><strong>{auth.user.name}</strong><small>{auth.user.canUpload ? '管理者 · 點此登出' : '團員 · 點此登出'}</small></span>
             <LogOut size={16} aria-hidden="true" />
+          </button>
+        ) : share.active ? (
+          <button type="button" className="button button-secondary login-shortcut" onClick={() => setView('admin')}>
+            <CloudUpload size={18} aria-hidden="true" />分享上傳
           </button>
         ) : (
           <button type="button" className="button button-secondary login-shortcut" onClick={() => setView('admin')}>
@@ -537,7 +542,7 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function AdminView({ auth }: { auth: AuthState }) {
+function AdminView({ auth, share }: { auth: AuthState; share: ShareAccessState }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [title, setTitle] = useState('')
@@ -547,16 +552,21 @@ function AdminView({ auth }: { auth: AuthState }) {
   const [uploadError, setUploadError] = useState('')
   const [uploads, setUploads] = useState<UploadedFile[]>([])
   const [loadingUploads, setLoadingUploads] = useState(false)
+  const [shareUrl, setShareUrl] = useState('')
+  const [shareState, setShareState] = useState<'idle' | 'creating' | 'copied'>('idle')
+
+  const canUpload = Boolean(auth.user?.canUpload || share.active)
+  const accessHeaders = useMemo(() => uploadAuthorizationHeaders(auth.credential, share.token), [auth.credential, share.token])
 
   const loadUploads = useCallback(async () => {
-    if (!auth.credential) {
+    if (!auth.credential && !share.token) {
       setUploads([])
       return
     }
     setLoadingUploads(true)
     try {
       const response = await fetch(`${import.meta.env.BASE_URL}api/uploads`, {
-        headers: { Authorization: `Bearer ${auth.credential}` },
+        headers: accessHeaders,
       })
       const payload = await response.json() as { uploads?: UploadedFile[]; error?: string }
       if (!response.ok) throw new Error(payload.error || '無法讀取上傳紀錄。')
@@ -566,7 +576,7 @@ function AdminView({ auth }: { auth: AuthState }) {
     } finally {
       setLoadingUploads(false)
     }
-  }, [auth.credential])
+  }, [accessHeaders, auth.credential, share.token])
 
   useEffect(() => { void loadUploads() }, [loadUploads])
 
@@ -591,7 +601,7 @@ function AdminView({ auth }: { auth: AuthState }) {
 
   async function uploadFile(event: React.FormEvent) {
     event.preventDefault()
-    if (!selectedFile || !auth.credential || !auth.user?.canUpload) return
+    if (!selectedFile || !canUpload) return
     setUploadState('uploading')
     setUploadError('')
     try {
@@ -602,7 +612,7 @@ function AdminView({ auth }: { auth: AuthState }) {
       form.set('key', musicalKey)
       const response = await fetch(`${import.meta.env.BASE_URL}api/uploads`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${auth.credential}` },
+        headers: accessHeaders,
         body: form,
       })
       const payload = await response.json() as { error?: string }
@@ -619,20 +629,40 @@ function AdminView({ auth }: { auth: AuthState }) {
     }
   }
 
+  async function createShareUrl() {
+    if (!auth.credential || !auth.user?.canUpload) return
+    setShareState('creating')
+    setUploadError('')
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}api/share`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${auth.credential}` },
+      })
+      const payload = await response.json() as { shareUrl?: string; error?: string }
+      if (!response.ok || !payload.shareUrl) throw new Error(payload.error || '無法建立分享網址。')
+      setShareUrl(payload.shareUrl)
+      await navigator.clipboard.writeText(payload.shareUrl)
+      setShareState('copied')
+    } catch (reason) {
+      setShareState('idle')
+      setUploadError(reason instanceof Error ? reason.message : '無法建立分享網址。')
+    }
+  }
+
   return (
     <section className="page" aria-labelledby="admin-title">
       <div className="page-heading">
         <div>
           <p className="eyebrow">ADMIN</p>
           <h2 id="admin-title">管理中心</h2>
-          <p>使用 Google 帳號登入，並將樂譜安全上傳至團隊儲存區。</p>
+          <p>{share.active && !auth.user ? '你正透過分享網址上傳，不需要登入。' : '管理者使用 Google 登入，也可建立免登入的分享上傳網址。'}</p>
         </div>
-        <span className="admin-badge"><ShieldCheck size={18} aria-hidden="true" />管理者專用</span>
+        <span className="admin-badge">{share.active && !auth.user ? <CloudUpload size={18} aria-hidden="true" /> : <ShieldCheck size={18} aria-hidden="true" />}{share.active && !auth.user ? '分享上傳' : '管理中心'}</span>
       </div>
 
       <div className="admin-stats">
-        <AdminMetric icon={Users} value={auth.user ? '1' : '0'} label="目前登入" helper={auth.user ? auth.user.name : '尚未使用 Google 登入'} />
-        <AdminMetric icon={UserCheck} value={auth.user?.canUpload ? '已核准' : '—'} label="上傳權限" helper={auth.user?.canUpload ? '可新增團隊檔案' : '僅管理者可上傳'} />
+        <AdminMetric icon={Users} value={auth.user ? '1' : '0'} label="管理者登入" helper={auth.user ? auth.user.name : '目前未登入'} />
+        <AdminMetric icon={UserCheck} value={canUpload ? '可上傳' : '—'} label="目前權限" helper={auth.user?.canUpload ? '管理者' : share.active ? '分享網址持有者' : '需要登入或分享網址'} />
         <AdminMetric icon={HardDrive} value={formatFileSize(uploads.reduce((total, file) => total + file.size, 0))} label="私有儲存" helper={`${uploads.length} 份已上傳檔案`} />
       </div>
 
@@ -663,14 +693,24 @@ function AdminView({ auth }: { auth: AuthState }) {
         <section className="admin-card">
           <div className="card-heading">
             <span className="card-icon"><Users size={21} aria-hidden="true" /></span>
-            <div><h3>存取權限</h3><p>登入與上傳採不同權限層級</p></div>
+            <div><h3>分享上傳</h3><p>有網址的人不需登入即可新增檔案</p></div>
           </div>
-          <div className="permission-flow">
-            <FlowStep number="1" title="Google 登入" helper="確認帳號身分" />
-            <FlowStep number="2" title="核對帳號" helper="確認是否為管理者" />
-            <FlowStep number="3" title="開放上傳" helper="只有核准帳號可新增" />
-          </div>
-          <p className="permission-note"><ShieldCheck size={18} aria-hidden="true" />所有檔案都會再次由伺服器驗證登入身分，前端無法自行繞過。</p>
+          {auth.user?.canUpload ? (
+            <div className="share-controls">
+              <button type="button" className="button button-primary button-full" onClick={createShareUrl} disabled={shareState === 'creating'}>
+                {shareState === 'creating' ? <LoaderCircle size={18} className="spin" aria-hidden="true" /> : <ExternalLink size={18} aria-hidden="true" />}
+                {shareUrl ? '重新產生網址，讓舊網址失效' : '產生可上傳網址'}
+              </button>
+              {shareUrl && <p className="inline-feedback" role="status"><CheckCircle2 size={16} aria-hidden="true" />{shareState === 'copied' ? '新網址已複製。' : '新網址已建立。'}</p>}
+            </div>
+          ) : share.active ? (
+            <div className="share-controls">
+              <p className="permission-note"><CheckCircle2 size={18} aria-hidden="true" />此瀏覽器已有分享上傳權限，不會取得管理者設定。</p>
+              <button type="button" className="button button-secondary button-full" onClick={share.clear}>離開分享上傳</button>
+            </div>
+          ) : (
+            <p className="permission-note"><LockKeyhole size={18} aria-hidden="true" />請由管理者登入，或使用管理者提供的分享網址。</p>
+          )}
         </section>
 
         <section className="admin-card upload-card">
@@ -678,10 +718,8 @@ function AdminView({ auth }: { auth: AuthState }) {
             <span className="card-icon"><FileMusic size={21} aria-hidden="true" /></span>
             <div><h3>新增檔案</h3><p>支援 PDF、JPG、PNG，單檔上限 20 MB</p></div>
           </div>
-          {!auth.user ? (
-            <div className="locked-upload"><LockKeyhole size={28} aria-hidden="true" /><strong>請先使用 Google 登入</strong><span>登入後才會顯示檔案選擇與上傳表單。</span></div>
-          ) : !auth.user.canUpload ? (
-            <div className="locked-upload"><LockKeyhole size={28} aria-hidden="true" /><strong>帳號尚未取得上傳權限</strong><span>你可以瀏覽資料，但無法新增團隊檔案。</span></div>
+          {!canUpload ? (
+            <div className="locked-upload"><LockKeyhole size={28} aria-hidden="true" /><strong>目前沒有上傳權限</strong><span>請使用管理者提供的分享網址，或由管理者登入。</span></div>
           ) : (
             <form className="upload-form" onSubmit={uploadFile}>
               <input ref={fileInputRef} className="sr-only" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => selectFile(event.target.files?.[0])} />
@@ -716,11 +754,11 @@ function AdminView({ auth }: { auth: AuthState }) {
         <section className="admin-card upload-history-card">
           <div className="card-heading">
             <span className="card-icon"><HardDrive size={21} aria-hidden="true" /></span>
-            <div><h3>最近上傳</h3><p>登入後可查看團隊私有檔案</p></div>
+            <div><h3>最近上傳</h3><p>具上傳權限時可查看團隊檔案</p></div>
           </div>
           {loadingUploads ? <p className="auth-loading"><LoaderCircle size={19} className="spin" aria-hidden="true" />正在讀取檔案</p> : uploads.length > 0 ? (
             <ul className="upload-history">{uploads.slice(0, 8).map((file) => <li key={file.id}><span className="source-mark"><FileMusic size={18} aria-hidden="true" /></span><span><strong>{file.title}</strong><small>{file.originalName} · {formatFileSize(file.size)}</small></span><span className="status-pill is-complete">{file.category}{file.key ? ` · ${file.key}` : ''}</span></li>)}</ul>
-          ) : <p className="empty-upload-history">{auth.user ? '目前還沒有上傳檔案。' : '登入後顯示上傳紀錄。'}</p>}
+          ) : <p className="empty-upload-history">{canUpload ? '目前還沒有上傳檔案。' : '取得上傳權限後顯示紀錄。'}</p>}
         </section>
       </div>
     </section>

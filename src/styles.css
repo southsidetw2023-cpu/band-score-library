@@ -323,6 +323,8 @@ button:active:not(:disabled), a:active { opacity: 0.82; }
 .signed-in-user .button { grid-column: 1 / -1; margin-top: 8px; }
 .permission-note { min-height: 54px; margin: 16px 0 0; padding: 12px; border-radius: 11px; display: flex; align-items: center; gap: 9px; background: var(--success-soft); color: var(--success); font-size: 11px; line-height: 1.5; }
 .permission-note svg { flex: 0 0 auto; }
+.share-controls { display: grid; gap: 10px; }
+.share-controls .permission-note { margin-top: 0; }
 .locked-upload { min-height: 170px; border: 1px dashed var(--border-strong); border-radius: 13px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; background: #faf7f3; color: var(--ink-soft); text-align: center; }
 .locked-upload svg { color: var(--primary); }
 .locked-upload strong { color: var(--ink); font-size: 13px; }

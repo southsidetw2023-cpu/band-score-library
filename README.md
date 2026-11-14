@@ -6,7 +6,7 @@
 
 GitHub Pages 備用網址：<https://southsidetw2023-cpu.github.io/band-score-library/>
 
-> 正式站以 Google 帳號辨識使用者；只有環境中核准的管理者帳號可新增私有檔案。
+> 管理者以 Google 帳號登入；持有管理者所產生之分享網址的人，不需登入即可上傳檔案。重新產生網址後，舊網址立即失效。
 
 ## 已完成
 
@@ -18,7 +18,7 @@ GitHub Pages 備用網址：<https://southsidetw2023-cpu.github.io/band-score-li
 - 〈How Much Do I Love You〉、〈Praise〉與〈天上的門打開〉具備已校對的結構化現場和弦譜、即時轉調與 Key 記憶
 - 另有 174 首以原始 PDF 文字層與頁面 OCR 交叉核對，完成可即時轉調的結構化和弦譜
 - 本週排練歌單（保存在瀏覽器本機）
-- Google 帳號登入與管理者上傳權限
+- Google 管理者登入、免登入分享上傳網址與網址輪替
 - PDF、JPG、PNG 私有檔案上傳（單檔上限 20 MB）
 - 上傳檔案的類型、大小與伺服器端身分驗證
 - 手機、平板與桌面響應式介面
@@ -55,5 +55,7 @@ Cloudflare Pages 需設定：
 - 執行環境變數 `GOOGLE_CLIENT_ID`：與前端相同的 Client ID
 - 執行環境變數 `ALLOWED_UPLOAD_EMAILS`：可上傳帳號，以逗號分隔
 - R2 binding `SCORE_UPLOADS`：團隊私有樂譜 bucket
+
+分享網址使用隨機憑證；網址中的原始憑證不會寫入儲存區，R2 僅保存 SHA-256 雜湊。持有網址者可上傳及查看最近上傳，但無法建立新網址或使用管理者功能。
 
 Google OAuth Web Client 的 JavaScript 來源需包含正式站與 Cloudflare 預覽網域。OAuth Client ID 不是密鑰；Client Secret 不應放入此專案或前端環境。

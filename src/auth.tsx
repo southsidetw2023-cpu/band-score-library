@@ -17,6 +17,12 @@ export interface AuthState {
   refresh: (credential: string) => Promise<void>
 }
 
+export interface ShareAccessState {
+  token: string
+  active: boolean
+  clear: () => void
+}
+
 interface GoogleCredentialResponse {
   credential: string
 }
@@ -36,6 +42,7 @@ declare global {
 }
 
 const storageKey = 'ensemble-google-credential'
+const shareStorageKey = 'ensemble-upload-share'
 const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
 
 async function getSession(credential: string) {
@@ -84,6 +91,32 @@ export function useGoogleAuth(): AuthState {
   }, [])
 
   return { user, credential, loading, error, configured: Boolean(clientId), signOut, refresh }
+}
+
+export function useShareAccess(): ShareAccessState {
+  const [token, setToken] = useState(() => {
+    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const incoming = fragment.get('upload')?.trim() ?? ''
+    if (/^[A-Za-z0-9_-]{40,100}$/.test(incoming)) {
+      window.localStorage.setItem(shareStorageKey, incoming)
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+      return incoming
+    }
+    return window.localStorage.getItem(shareStorageKey) ?? ''
+  })
+
+  const clear = useCallback(() => {
+    window.localStorage.removeItem(shareStorageKey)
+    setToken('')
+  }, [])
+
+  return { token, active: Boolean(token), clear }
+}
+
+export function uploadAuthorizationHeaders(credential: string, shareToken: string): Record<string, string> {
+  if (credential) return { Authorization: `Bearer ${credential}` }
+  if (shareToken) return { 'X-Upload-Key': shareToken }
+  return {}
 }
 
 export function GoogleSignInButton({ onCredential, disabled = false }: { onCredential: (credential: string) => void; disabled?: boolean }) {

@@ -121,9 +121,16 @@ try {
   await search.fill('')
   await desktop.getByRole('button', { name: /管理中心/ }).first().click()
   assert(await desktop.getByRole('heading', { name: '管理中心' }).isVisible(), '管理中心未開啟')
-  assert(await desktop.getByText('請先使用 Google 登入').isVisible(), '未登入時沒有鎖定檔案上傳')
+  assert(await desktop.getByText('目前沒有上傳權限').isVisible(), '未登入且沒有分享網址時沒有鎖定檔案上傳')
   assert(await desktop.getByText('Google 登入尚未完成正式環境設定。').first().isVisible(), '未設定 Google Client ID 時沒有清楚提示')
-  assert(await desktop.getByText('登入後顯示上傳紀錄。').isVisible(), '未登入時沒有隱藏私有上傳紀錄')
+  assert(await desktop.getByText('取得上傳權限後顯示紀錄。').isVisible(), '未授權時沒有隱藏上傳紀錄')
+
+  const shared = await browser.newPage({ viewport: { width: 1100, height: 900 } })
+  await shared.goto(`${baseUrl}#upload=${'a'.repeat(43)}`, { waitUntil: 'networkidle' })
+  assert(await shared.getByText('你正透過分享網址上傳，不需要登入。').isVisible(), '分享網址沒有直接開啟免登入上傳模式')
+  assert(await shared.getByText('選擇檔案，或拖曳到這裡').isVisible(), '分享網址持有者沒有顯示上傳表單')
+  assert(!shared.url().includes('#upload='), '分享憑證沒有從網址列移除')
+  await shared.close()
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true })
   await mobile.goto(baseUrl, { waitUntil: 'networkidle' })

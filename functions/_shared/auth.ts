@@ -22,7 +22,7 @@ export interface R2BucketLike {
     truncated: boolean
     cursor?: string
   }>
-  put(key: string, value: ArrayBuffer | ReadableStream, options?: {
+  put(key: string, value: ArrayBuffer | ReadableStream | string, options?: {
     httpMetadata?: { contentType?: string }
     customMetadata?: Record<string, string>
   }): Promise<R2ObjectLike>
@@ -33,6 +33,12 @@ export interface GoogleUser {
   name: string
   picture: string
   canUpload: boolean
+}
+
+export interface UploadAccess {
+  kind: 'admin' | 'share'
+  user: GoogleUser | null
+  uploadedBy: string
 }
 
 interface GoogleTokenInfo {
@@ -133,6 +139,52 @@ export async function authenticate(request: Request, env: Env): Promise<GoogleUs
     picture: token.picture ?? '',
     canUpload: allowedEmails(env).has(email),
   }
+}
+
+const shareConfigKey = 'config/upload-share.json'
+
+async function sha256(value: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function constantTimeEqual(left: string, right: string) {
+  if (left.length !== right.length) return false
+  let difference = 0
+  for (let index = 0; index < left.length; index += 1) difference |= left.charCodeAt(index) ^ right.charCodeAt(index)
+  return difference === 0
+}
+
+async function authenticateShare(request: Request, env: Env): Promise<UploadAccess> {
+  if (!env.SCORE_UPLOADS) throw new AuthError('檔案儲存區尚未完成環境設定。', 503)
+  const token = request.headers.get('X-Upload-Key')?.trim() ?? ''
+  if (!/^[A-Za-z0-9_-]{40,100}$/.test(token)) throw new AuthError('這個上傳網址無效或已失效。')
+  const config = await env.SCORE_UPLOADS.get(shareConfigKey)
+  if (!config?.body) throw new AuthError('分享上傳尚未啟用。', 403)
+  const stored = await new Response(config.body).json() as { tokenHash?: string }
+  const tokenHash = await sha256(token)
+  if (!stored.tokenHash || !constantTimeEqual(tokenHash, stored.tokenHash)) throw new AuthError('這個上傳網址無效或已失效。')
+  return { kind: 'share', user: null, uploadedBy: 'share-link' }
+}
+
+export async function authenticateUploadAccess(request: Request, env: Env): Promise<UploadAccess> {
+  if (request.headers.get('Authorization')) {
+    const user = await authenticate(request, env)
+    if (!user.canUpload) throw new AuthError('這個帳號尚未取得管理者權限。', 403)
+    return { kind: 'admin', user, uploadedBy: user.email }
+  }
+  return authenticateShare(request, env)
+}
+
+export async function createUploadShare(env: Env) {
+  if (!env.SCORE_UPLOADS) throw new AuthError('檔案儲存區尚未完成環境設定。', 503)
+  const random = crypto.getRandomValues(new Uint8Array(32))
+  const token = btoa(String.fromCharCode(...random)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+  await env.SCORE_UPLOADS.put(shareConfigKey, JSON.stringify({
+    tokenHash: await sha256(token),
+    updatedAt: new Date().toISOString(),
+  }), { httpMetadata: { contentType: 'application/json' } })
+  return token
 }
 
 export function json(data: unknown, status = 200) {

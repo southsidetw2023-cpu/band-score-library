@@ -1,4 +1,4 @@
-import { AuthError, authenticate, authErrorResponse, json, type Env, type R2ObjectLike } from '../_shared/auth'
+import { AuthError, authenticateUploadAccess, authErrorResponse, json, type Env, type R2ObjectLike } from '../_shared/auth'
 
 interface Context {
   request: Request
@@ -38,7 +38,7 @@ function serializeObject(object: R2ObjectLike) {
 
 export async function onRequestGet({ request, env }: Context) {
   try {
-    const user = await authenticate(request, env)
+    const access = await authenticateUploadAccess(request, env)
     const bucket = requireBucket(env)
     const key = new URL(request.url).searchParams.get('key')
 
@@ -69,7 +69,7 @@ export async function onRequestGet({ request, env }: Context) {
       return serializeObject(head ?? object)
     }))
     uploads.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt))
-    return json({ user, uploads })
+    return json({ access: { kind: access.kind, user: access.user }, uploads })
   } catch (error) {
     return authErrorResponse(error)
   }
@@ -77,8 +77,7 @@ export async function onRequestGet({ request, env }: Context) {
 
 export async function onRequestPost({ request, env }: Context) {
   try {
-    const user = await authenticate(request, env)
-    if (!user.canUpload) throw new AuthError('這個帳號尚未取得上傳權限。', 403)
+    const access = await authenticateUploadAccess(request, env)
     const bucket = requireBucket(env)
     const form = await request.formData()
     const file = form.get('file')
@@ -102,7 +101,7 @@ export async function onRequestPost({ request, env }: Context) {
         originalName: file.name.slice(0, 180),
         contentType: file.type,
         uploadedAt,
-        uploadedBy: user.email,
+        uploadedBy: access.uploadedBy,
       },
     })
 
@@ -113,7 +112,7 @@ export async function onRequestPost({ request, env }: Context) {
       originalName: file.name.slice(0, 180),
       contentType: file.type,
       uploadedAt,
-      uploadedBy: user.email,
+      uploadedBy: access.uploadedBy,
     } }) }, 201)
   } catch (error) {
     return authErrorResponse(error)
