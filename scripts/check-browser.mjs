@@ -121,6 +121,9 @@ try {
   await search.fill('')
   await desktop.getByRole('button', { name: /管理中心/ }).first().click()
   assert(await desktop.getByRole('heading', { name: '管理中心' }).isVisible(), '管理中心未開啟')
+  assert(await desktop.getByText('請先使用 Google 登入').isVisible(), '未登入時沒有鎖定檔案上傳')
+  assert(await desktop.getByText('Google 登入尚未完成正式環境設定。').first().isVisible(), '未設定 Google Client ID 時沒有清楚提示')
+  assert(await desktop.getByText('登入後顯示上傳紀錄。').isVisible(), '未登入時沒有隱藏私有上傳紀錄')
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true })
   await mobile.goto(baseUrl, { waitUntil: 'networkidle' })
@@ -232,7 +235,7 @@ try {
     await page.close()
   }
 
-  console.log('瀏覽器驗證完成：207 首資料、歌單排序與儲存、演出歌單滑動切歌、即時轉調、50% 字體縮放、Key 記憶、離線快取、歌曲詳情、管理中心，以及手機／平板直橫向皆通過。')
+  console.log('瀏覽器驗證完成：207 首資料、歌單排序與儲存、演出歌單滑動切歌、即時轉調、50% 字體縮放、Key 記憶、離線快取、歌曲詳情、Google 登入／上傳鎖定狀態、管理中心，以及手機／平板直橫向皆通過。')
 } finally {
   await browser.close()
 }

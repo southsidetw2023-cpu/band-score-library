@@ -1,4 +1,4 @@
-import { StrictMode, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { StrictMode, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist'
 import {
@@ -24,6 +24,8 @@ import {
   ListMusic,
   LoaderCircle,
   LockKeyhole,
+  LogIn,
+  LogOut,
   Minus,
   Music2,
   Plus,
@@ -41,6 +43,7 @@ import {
 } from 'lucide-react'
 import { getChordSheet, type ChordSheetData } from './data/chord-sheets'
 import { getStructuredSheet, type StructuredSheetData } from './data/structured-sheets'
+import { GoogleSignInButton, useGoogleAuth, type AuthState } from './auth'
 import songsData from './data/songs.generated.json'
 import type { Song, ViewName } from './types'
 import './styles.css'
@@ -97,6 +100,7 @@ function getInitialSetlist() {
 }
 
 function App() {
+  const auth = useGoogleAuth()
   const [view, setView] = useState<ViewName>('library')
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
@@ -165,7 +169,7 @@ function App() {
       <Sidebar view={view} setView={setView} setlistCount={setlistIds.length} />
 
       <main className="main-content" id="main-content">
-        <Topbar setView={setView} />
+        <Topbar setView={setView} auth={auth} />
 
         {view === 'library' && (
           <LibraryView
@@ -194,7 +198,7 @@ function App() {
           />
         )}
 
-        {view === 'admin' && <AdminView />}
+        {view === 'admin' && <AdminView auth={auth} />}
       </main>
 
       <MobileNav view={view} setView={setView} setlistCount={setlistIds.length} />
@@ -233,7 +237,7 @@ function Sidebar({ view, setView, setlistCount }: { view: ViewName; setView: (vi
   )
 }
 
-function Topbar({ setView }: { setView: (view: ViewName) => void }) {
+function Topbar({ setView, auth }: { setView: (view: ViewName) => void; auth: AuthState }) {
   return (
     <header className="topbar">
       <div>
@@ -244,10 +248,17 @@ function Topbar({ setView }: { setView: (view: ViewName) => void }) {
         <button type="button" className="button button-primary" onClick={() => setView('admin')}>
           <Plus size={18} aria-hidden="true" />新增樂譜
         </button>
-        <button type="button" className="profile-button" aria-label="開啟帳號選單">
-          <span className="profile-icon"><CircleUserRound size={21} aria-hidden="true" /></span>
-          <span><strong>管理者</strong><small>本機原型</small></span>
-        </button>
+        {auth.user ? (
+          <button type="button" className="profile-button" onClick={auth.signOut} aria-label={`登出 ${auth.user.name}`}>
+            <span className="profile-icon">{auth.user.picture ? <img src={auth.user.picture} alt="" referrerPolicy="no-referrer" /> : <CircleUserRound size={21} aria-hidden="true" />}</span>
+            <span><strong>{auth.user.name}</strong><small>{auth.user.canUpload ? '管理者 · 點此登出' : '團員 · 點此登出'}</small></span>
+            <LogOut size={16} aria-hidden="true" />
+          </button>
+        ) : (
+          <button type="button" className="button button-secondary login-shortcut" onClick={() => setView('admin')}>
+            <LogIn size={18} aria-hidden="true" />Google 登入
+          </button>
+        )}
       </div>
     </header>
   )
@@ -509,13 +520,103 @@ function SetlistView({ songs: setlistSongs, onOpen, onRemove, onMove, onClear, o
   )
 }
 
-function AdminView() {
-  const [importState, setImportState] = useState<'idle' | 'running' | 'done'>('idle')
-  const [uploadNotice, setUploadNotice] = useState(false)
+interface UploadedFile {
+  id: string
+  title: string
+  category: Song['category']
+  key: string
+  originalName: string
+  contentType: string
+  size: number
+  uploadedAt: string
+}
 
-  function simulateImport() {
-    setImportState('running')
-    window.setTimeout(() => setImportState('done'), 900)
+function formatFileSize(bytes: number) {
+  if (bytes === 0) return '0 KB'
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function AdminView({ auth }: { auth: AuthState }) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [title, setTitle] = useState('')
+  const [category, setCategory] = useState<Song['category']>('敬拜')
+  const [musicalKey, setMusicalKey] = useState('')
+  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'done'>('idle')
+  const [uploadError, setUploadError] = useState('')
+  const [uploads, setUploads] = useState<UploadedFile[]>([])
+  const [loadingUploads, setLoadingUploads] = useState(false)
+
+  const loadUploads = useCallback(async () => {
+    if (!auth.credential) {
+      setUploads([])
+      return
+    }
+    setLoadingUploads(true)
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}api/uploads`, {
+        headers: { Authorization: `Bearer ${auth.credential}` },
+      })
+      const payload = await response.json() as { uploads?: UploadedFile[]; error?: string }
+      if (!response.ok) throw new Error(payload.error || '無法讀取上傳紀錄。')
+      setUploads(payload.uploads ?? [])
+    } catch (reason) {
+      setUploadError(reason instanceof Error ? reason.message : '無法讀取上傳紀錄。')
+    } finally {
+      setLoadingUploads(false)
+    }
+  }, [auth.credential])
+
+  useEffect(() => { void loadUploads() }, [loadUploads])
+
+  function selectFile(file: File | undefined) {
+    setUploadError('')
+    setUploadState('idle')
+    if (!file) return
+    const accepted = ['application/pdf', 'image/jpeg', 'image/png']
+    if (!accepted.includes(file.type)) {
+      setSelectedFile(null)
+      setUploadError('僅支援 PDF、JPG 與 PNG。')
+      return
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setSelectedFile(null)
+      setUploadError('單一檔案需小於 20 MB。')
+      return
+    }
+    setSelectedFile(file)
+    setTitle(file.name.replace(/\.[^.]+$/, ''))
+  }
+
+  async function uploadFile(event: React.FormEvent) {
+    event.preventDefault()
+    if (!selectedFile || !auth.credential || !auth.user?.canUpload) return
+    setUploadState('uploading')
+    setUploadError('')
+    try {
+      const form = new FormData()
+      form.set('file', selectedFile)
+      form.set('title', title)
+      form.set('category', category)
+      form.set('key', musicalKey)
+      const response = await fetch(`${import.meta.env.BASE_URL}api/uploads`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${auth.credential}` },
+        body: form,
+      })
+      const payload = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(payload.error || '檔案上傳失敗。')
+      setUploadState('done')
+      setSelectedFile(null)
+      setTitle('')
+      setMusicalKey('')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      await loadUploads()
+    } catch (reason) {
+      setUploadState('idle')
+      setUploadError(reason instanceof Error ? reason.message : '檔案上傳失敗。')
+    }
   }
 
   return (
@@ -524,65 +625,102 @@ function AdminView() {
         <div>
           <p className="eyebrow">ADMIN</p>
           <h2 id="admin-title">管理中心</h2>
-          <p>管理團員、批次匯入與私有儲存。此頁目前為本機操作示範。</p>
+          <p>使用 Google 帳號登入，並將樂譜安全上傳至團隊儲存區。</p>
         </div>
         <span className="admin-badge"><ShieldCheck size={18} aria-hidden="true" />管理者專用</span>
       </div>
 
       <div className="admin-stats">
-        <AdminMetric icon={Users} value="1" label="管理者" helper="Google 登入待串接" />
-        <AdminMetric icon={UserCheck} value="0" label="待核准帳號" helper="核准後才能查看" />
-        <AdminMetric icon={HardDrive} value="0 MB" label="私有儲存" helper="尚未啟用外部服務" />
+        <AdminMetric icon={Users} value={auth.user ? '1' : '0'} label="目前登入" helper={auth.user ? auth.user.name : '尚未使用 Google 登入'} />
+        <AdminMetric icon={UserCheck} value={auth.user?.canUpload ? '已核准' : '—'} label="上傳權限" helper={auth.user?.canUpload ? '可新增團隊檔案' : '僅管理者可上傳'} />
+        <AdminMetric icon={HardDrive} value={formatFileSize(uploads.reduce((total, file) => total + file.size, 0))} label="私有儲存" helper={`${uploads.length} 份已上傳檔案`} />
       </div>
 
       <div className="admin-grid">
-        <section className="admin-card import-card">
+        <section className="admin-card auth-card">
           <div className="card-heading">
-            <span className="card-icon"><CloudUpload size={21} aria-hidden="true" /></span>
-            <div><h3>首批資料匯入</h3><p>Google 試算表已完成欄位分析</p></div>
+            <span className="card-icon"><CircleUserRound size={21} aria-hidden="true" /></span>
+            <div><h3>Google 帳號</h3><p>登入後依帳號核對團隊權限</p></div>
           </div>
-          <div className="import-source">
-            <span className="source-mark"><FileText size={20} aria-hidden="true" /></span>
-            <span><strong>PPC敬拜團－歌單總表</strong><small>讚美 73 首 · 敬拜 134 首</small></span>
-            <span className="status-pill is-complete"><CheckCircle2 size={14} aria-hidden="true" />可匯入</span>
-          </div>
-          <ul className="check-list">
-            <li><Check size={16} aria-hidden="true" />207 筆歌曲資料</li>
-            <li><Check size={16} aria-hidden="true" />321 個外部資源連結</li>
-            <li><Check size={16} aria-hidden="true" />1 組跨分類同名歌曲</li>
-          </ul>
-          <button type="button" className="button button-primary button-full" onClick={simulateImport} disabled={importState !== 'idle'}>
-            {importState === 'running' && <LoaderCircle size={18} className="spin" aria-hidden="true" />}
-            {importState === 'done' && <Check size={18} aria-hidden="true" />}
-            {importState === 'idle' ? '預覽匯入流程' : importState === 'running' ? '正在建立預覽' : '預覽已完成'}
-          </button>
-          {importState === 'done' && <p className="inline-feedback" role="status">這只是本機模擬，沒有修改試算表或複製檔案。</p>}
+          {auth.loading ? (
+            <p className="auth-loading" role="status"><LoaderCircle size={20} className="spin" aria-hidden="true" />正在確認 Google 帳號</p>
+          ) : auth.user ? (
+            <div className="signed-in-user">
+              <span className="profile-icon">{auth.user.picture ? <img src={auth.user.picture} alt="" referrerPolicy="no-referrer" /> : <CircleUserRound size={21} aria-hidden="true" />}</span>
+              <span><strong>{auth.user.name}</strong><small>{auth.user.email}</small></span>
+              <span className={auth.user.canUpload ? 'status-pill is-complete' : 'status-pill is-missing'}>{auth.user.canUpload ? <CheckCircle2 size={14} aria-hidden="true" /> : <LockKeyhole size={14} aria-hidden="true" />}{auth.user.canUpload ? '管理者' : '團員'}</span>
+              <button type="button" className="button button-secondary button-full" onClick={auth.signOut}><LogOut size={17} aria-hidden="true" />登出</button>
+            </div>
+          ) : (
+            <div className="auth-sign-in">
+              <p>使用團隊核准的 Google 帳號登入，不會取得你的密碼。</p>
+              <GoogleSignInButton onCredential={auth.refresh} />
+            </div>
+          )}
+          {auth.error && <p className="inline-feedback is-error" role="alert">{auth.error}</p>}
         </section>
 
         <section className="admin-card">
           <div className="card-heading">
             <span className="card-icon"><Users size={21} aria-hidden="true" /></span>
-            <div><h3>團員存取權</h3><p>首次登入需由管理者核准</p></div>
+            <div><h3>存取權限</h3><p>登入與上傳採不同權限層級</p></div>
           </div>
           <div className="permission-flow">
             <FlowStep number="1" title="Google 登入" helper="確認帳號身分" />
-            <FlowStep number="2" title="等待核准" helper="暫時無法瀏覽樂譜" />
-            <FlowStep number="3" title="開通存取" helper="管理者可隨時停用" />
+            <FlowStep number="2" title="核對帳號" helper="確認是否為管理者" />
+            <FlowStep number="3" title="開放上傳" helper="只有核准帳號可新增" />
           </div>
-          <button type="button" className="button button-secondary button-full" disabled>尚無待核准帳號</button>
+          <p className="permission-note"><ShieldCheck size={18} aria-hidden="true" />所有檔案都會再次由伺服器驗證登入身分，前端無法自行繞過。</p>
         </section>
 
         <section className="admin-card upload-card">
           <div className="card-heading">
             <span className="card-icon"><FileMusic size={21} aria-hidden="true" /></span>
-            <div><h3>新增檔案</h3><p>支援 PDF、JPG、PNG 與文字和弦譜</p></div>
+            <div><h3>新增檔案</h3><p>支援 PDF、JPG、PNG，單檔上限 20 MB</p></div>
           </div>
-          <button type="button" className="drop-zone" onClick={() => setUploadNotice(true)}>
-            <CloudUpload size={30} aria-hidden="true" />
-            <strong>選擇檔案或整個資料夾</strong>
-            <span>正式版會檢查重複檔案與上傳失敗項目</span>
-          </button>
-          {uploadNotice && <p className="inline-feedback" role="status">本機原型已確認操作；正式版才會開啟檔案選擇器。</p>}
+          {!auth.user ? (
+            <div className="locked-upload"><LockKeyhole size={28} aria-hidden="true" /><strong>請先使用 Google 登入</strong><span>登入後才會顯示檔案選擇與上傳表單。</span></div>
+          ) : !auth.user.canUpload ? (
+            <div className="locked-upload"><LockKeyhole size={28} aria-hidden="true" /><strong>帳號尚未取得上傳權限</strong><span>你可以瀏覽資料，但無法新增團隊檔案。</span></div>
+          ) : (
+            <form className="upload-form" onSubmit={uploadFile}>
+              <input ref={fileInputRef} className="sr-only" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => selectFile(event.target.files?.[0])} />
+              <button
+                type="button"
+                className={selectedFile ? 'drop-zone has-file' : 'drop-zone'}
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => { event.preventDefault(); selectFile(event.dataTransfer.files[0]) }}
+              >
+                {selectedFile ? <FileMusic size={30} aria-hidden="true" /> : <CloudUpload size={30} aria-hidden="true" />}
+                <strong>{selectedFile ? selectedFile.name : '選擇檔案，或拖曳到這裡'}</strong>
+                <span>{selectedFile ? formatFileSize(selectedFile.size) : 'PDF、JPG、PNG · 上限 20 MB'}</span>
+              </button>
+              {selectedFile && (
+                <div className="upload-fields">
+                  <label><span>歌曲名稱</span><input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={120} /></label>
+                  <label><span>分類</span><select value={category} onChange={(event) => setCategory(event.target.value as Song['category'])}><option>讚美</option><option>敬拜</option></select></label>
+                  <label><span>原調（選填）</span><select value={musicalKey} onChange={(event) => setMusicalKey(event.target.value)}><option value="">未填</option>{chromaticKeys.map((key) => <option key={key}>{key}</option>)}</select></label>
+                </div>
+              )}
+              <button type="submit" className="button button-primary button-full" disabled={!selectedFile || !title.trim() || uploadState === 'uploading'}>
+                {uploadState === 'uploading' ? <LoaderCircle size={18} className="spin" aria-hidden="true" /> : <CloudUpload size={18} aria-hidden="true" />}
+                {uploadState === 'uploading' ? '正在安全上傳' : '上傳至團隊樂譜庫'}
+              </button>
+              {uploadState === 'done' && <p className="inline-feedback" role="status"><CheckCircle2 size={16} aria-hidden="true" />檔案已成功上傳。</p>}
+            </form>
+          )}
+          {uploadError && <p className="inline-feedback is-error" role="alert">{uploadError}</p>}
+        </section>
+
+        <section className="admin-card upload-history-card">
+          <div className="card-heading">
+            <span className="card-icon"><HardDrive size={21} aria-hidden="true" /></span>
+            <div><h3>最近上傳</h3><p>登入後可查看團隊私有檔案</p></div>
+          </div>
+          {loadingUploads ? <p className="auth-loading"><LoaderCircle size={19} className="spin" aria-hidden="true" />正在讀取檔案</p> : uploads.length > 0 ? (
+            <ul className="upload-history">{uploads.slice(0, 8).map((file) => <li key={file.id}><span className="source-mark"><FileMusic size={18} aria-hidden="true" /></span><span><strong>{file.title}</strong><small>{file.originalName} · {formatFileSize(file.size)}</small></span><span className="status-pill is-complete">{file.category}{file.key ? ` · ${file.key}` : ''}</span></li>)}</ul>
+          ) : <p className="empty-upload-history">{auth.user ? '目前還沒有上傳檔案。' : '登入後顯示上傳紀錄。'}</p>}
         </section>
       </div>
     </section>
