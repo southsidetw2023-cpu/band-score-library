@@ -167,7 +167,7 @@ try {
 
   for (const example of [
     { title: 'The Joy', originalKey: 'F', targetKey: 'F#', chord: 'F# B/F# F#' },
-    { title: '在呼召我之處', originalKey: 'E', targetKey: 'F', chord: 'F Bb/F F Eb/F F' },
+    { title: '在呼召我之處', originalKey: 'E', targetKey: 'F', chord: 'F Bb/F F Eb/F F', verified: true },
     { title: 'God is Here 神同在', originalKey: 'D', targetKey: 'Eb', chord: 'Eb' },
   ]) {
     await mobile.getByPlaceholder('搜尋歌名、出處、語言或年份').fill(example.title)
@@ -178,6 +178,7 @@ try {
     await mobile.locator('.structured-performance-sheet').waitFor()
     await mobile.waitForFunction((key) => document.querySelector('.key-stepper strong')?.textContent === key, example.originalKey)
     assert((await mobile.locator('.key-stepper strong').textContent()) === example.originalKey, `${example.title} 沒有顯示原調`)
+    if (example.verified) assert((await mobile.locator('.performance-title-row p').textContent())?.includes('已對照原始歌譜與歌詞完成校對'), `${example.title} 沒有顯示已校對狀態`)
     assert((await mobile.locator('.performance-pdf-page canvas').count()) === 0, `${example.title} 仍在載入 PDF`)
     await mobile.getByRole('button', { name: '升高一個半音' }).click()
     assert((await mobile.locator('.key-stepper strong').textContent()) === example.targetKey, `${example.title} 沒有更新目前 Key`)

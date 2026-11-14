@@ -24,6 +24,10 @@ const keyOverrides = {
   '讚美-040-you-have-overcome-祢勝過世界': 'E',
   '讚美-042-yesus-tuhan-allah-yang-perkasa-耶穌全能偉大真神': 'C',
 }
+const reviewedIds = new Set([
+  '敬拜-044-在呼召我之處',
+  '讚美-041-祢是全能神',
+])
 const rowOverrides = {
   '敬拜-044-在呼召我之處': [
     { type: 'section', text: 'Verse' },
@@ -209,8 +213,10 @@ for (const file of files) {
   sheets[extraction.songId] = {
     songId: extraction.songId,
     originalKey: extraction.detectedKey || keyOverrides[extraction.songId] || '',
-    sourceLabel: '由現有歌譜擷取，待逐首校對',
-    reviewStatus: extraction.detectedKey || keyOverrides[extraction.songId] ? 'draft' : 'needs_key_review',
+    sourceLabel: reviewedIds.has(extraction.songId) ? '已對照原始歌譜與歌詞完成校對' : '由現有歌譜擷取，待逐首校對',
+    reviewStatus: reviewedIds.has(extraction.songId)
+      ? 'verified'
+      : (extraction.detectedKey || keyOverrides[extraction.songId] ? 'draft' : 'needs_key_review'),
     rows,
   }
 }
@@ -219,7 +225,7 @@ await mkdir(path.dirname(outputPath), { recursive: true })
 await writeFile(outputPath, `${JSON.stringify(sheets, null, 2)}\n`)
 const progress = JSON.parse(await readFile(progressPath, 'utf8'))
 for (const song of progress.songs) {
-  if (sheets[song.songId]) song.status = 'structured_draft'
+  if (sheets[song.songId]) song.status = reviewedIds.has(song.songId) ? 'structured_verified' : 'structured_draft'
 }
 progress.generatedAt = new Date().toISOString()
 progress.counts = progress.songs.reduce((counts, song) => {

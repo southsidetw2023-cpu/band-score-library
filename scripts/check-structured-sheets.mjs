@@ -26,8 +26,11 @@ for (const sheet of entries) {
   }
 }
 
-const draftIds = new Set(progress.songs.filter((song) => song.status === 'structured_draft').map((song) => song.songId))
-assert(draftIds.size === 174, `進度清單應有 174 首 structured_draft，實際為 ${draftIds.size}`)
-for (const songId of Object.keys(sheets)) assert(draftIds.has(songId), `${songId} 未寫入進度清單`)
+const structuredIds = new Set(progress.songs.filter((song) => ['structured_draft', 'structured_verified'].includes(song.status)).map((song) => song.songId))
+const verifiedIds = new Set(progress.songs.filter((song) => song.status === 'structured_verified').map((song) => song.songId))
+assert(structuredIds.size === 174, `進度清單應有 174 首結構化歌譜，實際為 ${structuredIds.size}`)
+assert(verifiedIds.size === 2, `第一批應有 2 首 structured_verified，實際為 ${verifiedIds.size}`)
+for (const songId of Object.keys(sheets)) assert(structuredIds.has(songId), `${songId} 未寫入進度清單`)
+for (const songId of verifiedIds) assert(sheets[songId]?.reviewStatus === 'verified', `${songId} 未標示 verified`)
 
-console.log('結構化和弦譜驗證完成：174 首均具備原調、段落、歌詞與可辨識和弦行。')
+console.log('結構化和弦譜驗證完成：174 首均具備原調、段落、歌詞與可辨識和弦行；其中 2 首已完成來源對照校對。')

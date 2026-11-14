@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-14T08:08:03.873Z",
+  "generatedAt": "2026-11-14T08:18:55.316Z",
   "totalSongs": 207,
   "counts": {
     "published": 3,
     "blocked_missing_source": 22,
-    "structured_draft": 174,
-    "blocked_source_needs_resolution": 8
+    "structured_draft": 172,
+    "blocked_source_needs_resolution": 8,
+    "structured_verified": 2
   },
   "songs": [
     {
@@ -431,7 +432,7 @@
       "category": "讚美",
       "sourceType": "drive_pdf",
       "sourceUrl": "https://drive.google.com/file/d/1HEgPUozYiLE1W1TttSRVGLpmAHi-oWiY/view?usp=drive_open",
-      "status": "structured_draft",
+      "status": "structured_verified",
       "pageCount": 1,
       "characterCount": 253,
       "detectedKey": "E",
@@ -2134,7 +2135,7 @@
       "category": "敬拜",
       "sourceType": "drive_pdf",
       "sourceUrl": "https://drive.google.com/file/d/1lrKigybntJUIwEcz85EffF7y6f7Di9rm/view?usp=sharing",
-      "status": "structured_draft",
+      "status": "structured_verified",
       "pageCount": 1,
       "characterCount": 250,
       "detectedKey": "E",

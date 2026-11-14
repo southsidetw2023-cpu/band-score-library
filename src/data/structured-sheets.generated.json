@@ -6966,8 +6966,8 @@
   "敬拜-044-在呼召我之處": {
     "songId": "敬拜-044-在呼召我之處",
     "originalKey": "E",
-    "sourceLabel": "由現有歌譜擷取，待逐首校對",
-    "reviewStatus": "draft",
+    "sourceLabel": "已對照原始歌譜與歌詞完成校對",
+    "reviewStatus": "verified",
     "rows": [
       {
         "type": "section",
@@ -30218,8 +30218,8 @@
   "讚美-041-祢是全能神": {
     "songId": "讚美-041-祢是全能神",
     "originalKey": "E",
-    "sourceLabel": "由現有歌譜擷取，待逐首校對",
-    "reviewStatus": "draft",
+    "sourceLabel": "已對照原始歌譜與歌詞完成校對",
+    "reviewStatus": "verified",
     "rows": [
       {
         "type": "section",
