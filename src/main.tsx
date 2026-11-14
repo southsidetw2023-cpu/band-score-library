@@ -623,13 +623,14 @@ function SongDialog({ song, onClose, onAdd, onOpenLive, inSetlist }: { song: Son
           <section className="resource-section">
             <h3>歌曲資源</h3>
             <div className="resource-list">
-              {chordSheet && (
-                <button type="button" className="resource-link live-resource" onClick={() => onOpenLive(song)}>
-                  <Presentation size={19} aria-hidden="true" />
-                  <span><strong>現場和弦譜</strong><small>即時調整 Key</small></span>
-                  <ChevronRight size={16} aria-hidden="true" />
-                </button>
-              )}
+              <button type="button" className="resource-link live-resource" onClick={() => onOpenLive(song)}>
+                <Presentation size={19} aria-hidden="true" />
+                <span>
+                  <strong>現場模式</strong>
+                  <small>{chordSheet ? '和弦譜可即時轉調' : '設定演出 Key 與開啟歌譜'}</small>
+                </span>
+                <ChevronRight size={16} aria-hidden="true" />
+              </button>
               <ResourceLink href={song.scoreUrl} icon={FileMusic} title="歌譜" helper={song.scoreUrl ? '在新分頁開啟' : '尚未提供'} />
               <ResourceLink href={song.lyricsUrl} icon={FileText} title="中文歌詞" helper={song.lyricsUrl ? '開啟原始連結' : '尚未提供'} />
               <ResourceLink href={song.songUrl} icon={CirclePlay} title="歌曲參考" helper={song.songUrl ? 'YouTube 或音訊' : '尚未提供'} />
@@ -700,6 +701,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
   const song = songs[activeIndex] ?? null
   const chordSheet = song ? getChordSheet(song.id) : null
   const [offset, setOffset] = useState(0)
+  const [performanceKey, setPerformanceKey] = useState('')
   const [fontScale, setFontScale] = useState(() => Number(window.localStorage.getItem('ensemble-live-font-scale')) || 1)
   const [renderedSheet, setRenderedSheet] = useState({ songId: '', offset: 0, html: '' })
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false)
@@ -749,6 +751,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
     if (!song) return
     const stored = Number(window.localStorage.getItem(`ensemble-live-transpose:${song.id}`))
     setOffset(Number.isFinite(stored) ? normalizeTransposeOffset(stored) : 0)
+    setPerformanceKey(window.localStorage.getItem(`ensemble-live-key:${song.id}`) || song.key || '')
   }, [song])
 
   function updateOffset(nextOffset: number) {
@@ -762,6 +765,12 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
     const normalized = Math.min(1.4, Math.max(0.5, Math.round(nextScale * 10) / 10))
     setFontScale(normalized)
     window.localStorage.setItem('ensemble-live-font-scale', String(normalized))
+  }
+
+  function updatePerformanceKey(nextKey: string) {
+    if (!song || !chromaticKeys.includes(nextKey as typeof chromaticKeys[number])) return
+    setPerformanceKey(nextKey)
+    window.localStorage.setItem(`ensemble-live-key:${song.id}`, nextKey)
   }
 
   useEffect(() => {
@@ -796,7 +805,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
     return () => { cancelled = true }
   }, [chordSheet, offset])
 
-  const targetKey = chordSheet ? currentKey(chordSheet.originalKey, offset) : ''
+  const targetKey = chordSheet ? currentKey(chordSheet.originalKey, offset) : performanceKey
   const visibleSheet = song && renderedSheet.songId === song.id && renderedSheet.offset === offset ? renderedSheet.html : ''
 
   function goToSong(nextIndex: number) {
@@ -867,7 +876,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
                 <div>
                   <span className="performance-kicker">現場模式</span>
                   <h2 id="performance-title">{song.title}</h2>
-                  <p>{chordSheet ? `原調 ${chordSheet.originalKey} · ${chordSheet.sourceLabel}` : '尚未建立可轉調和弦譜'}</p>
+                  <p>{chordSheet ? `原調 ${chordSheet.originalKey} · ${chordSheet.sourceLabel}` : '原始歌譜模式 · 可記錄演出 Key'}</p>
                 </div>
                 <button type="button" className="performance-close" onClick={() => dialogRef.current?.close()} aria-label="關閉現場和弦譜"><X size={23} /></button>
               </div>
@@ -881,11 +890,21 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
               )}
 
               <div className="performance-toolbar">
-                <div className="key-stepper" aria-label="調整歌曲 Key">
-                  <button type="button" onClick={() => updateOffset(offset - 1)} disabled={!chordSheet} aria-label="降低一個半音"><Minus size={24} /></button>
-                  <div aria-live="polite"><small>目前 Key</small><strong>{targetKey || '—'}</strong><span>{chordSheet ? transposeLabel(offset) : '待補'}</span></div>
-                  <button type="button" onClick={() => updateOffset(offset + 1)} disabled={!chordSheet} aria-label="升高一個半音"><Plus size={24} /></button>
-                </div>
+                {chordSheet ? (
+                  <div className="key-stepper" aria-label="調整歌曲 Key">
+                    <button type="button" onClick={() => updateOffset(offset - 1)} aria-label="降低一個半音"><Minus size={24} /></button>
+                    <div aria-live="polite"><small>目前 Key</small><strong>{targetKey}</strong><span>{transposeLabel(offset)}</span></div>
+                    <button type="button" onClick={() => updateOffset(offset + 1)} aria-label="升高一個半音"><Plus size={24} /></button>
+                  </div>
+                ) : (
+                  <label className="performance-key-picker">
+                    <span><small>演出 Key</small><strong>{targetKey || '未設定'}</strong></span>
+                    <select value={performanceKey} onChange={(event) => updatePerformanceKey(event.target.value)} aria-label={`設定 ${song.title} 的演出 Key`}>
+                      <option value="" disabled>選擇 Key</option>
+                      {chromaticKeys.map((key) => <option key={key} value={key}>{key}</option>)}
+                    </select>
+                  </label>
+                )}
                 <button type="button" className="performance-tool" onClick={() => updateOffset(0)} disabled={!chordSheet || offset === 0}><RotateCcw size={18} aria-hidden="true" /><span>恢復原調</span></button>
                 <div className="font-stepper" aria-label="調整和弦譜字體大小">
                   <button type="button" onClick={() => updateFontScale(fontScale - 0.1)} disabled={fontScale <= 0.5} aria-label="縮小字體"><ZoomOut size={19} /></button>
@@ -901,7 +920,15 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
               ? visibleSheet
                 ? <div className="performance-sheet" dangerouslySetInnerHTML={{ __html: visibleSheet }} />
                 : <div className="performance-loading"><LoaderCircle size={24} className="spin" aria-hidden="true" />正在準備和弦譜</div>
-              : <section className="performance-missing"><FileMusic size={38} aria-hidden="true" /><h3>這首歌尚未建立現場和弦譜</h3><p>仍可左右滑動繼續演出歌單；完成和弦譜後，這裡就能即時升降 Key。</p>{song.scoreUrl && <a className="button button-primary" href={song.scoreUrl} target="_blank" rel="noreferrer">開啟原始歌譜<ExternalLink size={17} aria-hidden="true" /></a>}</section>}
+              : <section className="performance-missing">
+                  <FileMusic size={38} aria-hidden="true" />
+                  <h3>{song.scoreUrl ? '使用原始歌譜演出' : '這首歌尚未提供歌譜'}</h3>
+                  <p>可在上方設定並記住演出 Key。原始檔不會自動轉調；仍可左右滑動切換歌單。</p>
+                  <div className="performance-resource-actions">
+                    {song.scoreUrl && <a className="button button-primary" href={song.scoreUrl} target="_blank" rel="noreferrer">開啟原始歌譜<ExternalLink size={17} aria-hidden="true" /></a>}
+                    {song.lyricsUrl && <a className="button button-secondary" href={song.lyricsUrl} target="_blank" rel="noreferrer">開啟歌詞<ExternalLink size={17} aria-hidden="true" /></a>}
+                  </div>
+                </section>}
           </main>
         </div>
       )}
