@@ -27,6 +27,7 @@ import {
   LogIn,
   LogOut,
   Minus,
+  Music2,
   Plus,
   Presentation,
   RotateCcw,
