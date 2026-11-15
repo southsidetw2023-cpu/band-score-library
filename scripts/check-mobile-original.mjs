@@ -36,8 +36,12 @@ try {
 
   await page.getByRole('button', { name: '放大原始歌譜' }).click()
   await page.waitForFunction(() => document.querySelector('.font-stepper span')?.textContent === '110%')
+  await page.waitForTimeout(1_500)
+  const stablePageBox = await scorePage.boundingBox()
   const enlargedCanvasBox = await canvas.boundingBox()
+  assert(stablePageBox && Math.abs(stablePageBox.width - pageBox.width) < 1, '放大後 PDF 量測外框被畫布反向撐大')
   assert(enlargedCanvasBox && enlargedCanvasBox.x >= pageBox.x - 1, '放大後原始譜左側跑出可捲動範圍')
+  assert(enlargedCanvasBox && enlargedCanvasBox.width > pageBox.width * 1.08 && enlargedCanvasBox.width < pageBox.width * 1.12, '110% 放大比例持續失控倍增')
 
   const metrics = await scoreWrap.evaluate((element) => ({
     clientWidth: element.clientWidth,
@@ -45,6 +49,14 @@ try {
   }))
   assert(metrics.scrollWidth > metrics.clientWidth, '放大後原始譜無法橫向捲動')
   console.log('3/4 按鈕放大與橫向捲動通過')
+
+  for (let index = 0; index < 9; index += 1) await page.getByRole('button', { name: '放大原始歌譜' }).click()
+  await page.waitForFunction(() => document.querySelector('.font-stepper span')?.textContent === '200%')
+  await page.waitForTimeout(1_500)
+  const doubledPageBox = await scorePage.boundingBox()
+  const doubledCanvasBox = await canvas.boundingBox()
+  assert(doubledPageBox && Math.abs(doubledPageBox.width - pageBox.width) < 1, '連續放大後 PDF 量測外框被畫布反向撐大')
+  assert(doubledCanvasBox && doubledCanvasBox.width > pageBox.width * 1.98 && doubledCanvasBox.width < pageBox.width * 2.02, '200% 放大比例持續失控倍增')
 
   await scoreWrap.evaluate((target) => {
     const makeTouch = (identifier, clientX) => new Touch({ identifier, target, clientX, clientY: 520 })
