@@ -54,7 +54,17 @@ if (previewTheme && previewThemes.has(previewTheme)) {
   document.documentElement.dataset.theme = previewTheme
 }
 
-const songs = (songsData as Song[]).sort((a, b) => a.title.localeCompare(b.title, 'zh-Hant'))
+function compareSongsNewestFirst(a: Song, b: Song) {
+  const yearDifference = (Number.parseInt(b.year, 10) || 0) - (Number.parseInt(a.year, 10) || 0)
+  if (yearDifference !== 0) return yearDifference
+
+  const indexDifference = b.index - a.index
+  if (indexDifference !== 0) return indexDifference
+
+  return a.title.localeCompare(b.title, 'zh-Hant')
+}
+
+const songs = [...(songsData as Song[])].sort(compareSongsNewestFirst)
 const chromaticKeys = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'] as const
 const pdfWorkerUrl = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
@@ -469,7 +479,7 @@ function LibraryView(props: LibraryViewProps) {
 
       <div className="results-bar" aria-live="polite">
         <span>找到 <strong>{props.filteredSongs.length}</strong> 首</span>
-        <span className="results-helper">點選歌曲查看完整資料</span>
+        <span className="results-helper">依年份新到舊排列 · 點選歌曲查看完整資料</span>
       </div>
 
       {props.filteredSongs.length > 0 ? (

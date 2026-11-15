@@ -28,6 +28,8 @@ try {
   await desktop.goto(baseUrl, { waitUntil: 'load' })
   assert(await desktop.getByRole('heading', { name: '全部樂譜' }).isVisible(), '桌面版未顯示樂譜庫標題')
   assert((await desktop.locator('.song-card').count()) === 30, '桌面版應先顯示 30 首，避免一次渲染 207 張卡片')
+  assert((await desktop.locator('.song-card h3').first().textContent()) === 'Jesus Christ alone', '樂譜庫未依年份與新增順序由新到舊排列')
+  assert(await desktop.getByText('依年份新到舊排列 · 點選歌曲查看完整資料').isVisible(), '樂譜庫未顯示目前排序規則')
 
   const search = desktop.getByPlaceholder('搜尋歌名、出處、語言或年份')
   await search.fill('Follow')
