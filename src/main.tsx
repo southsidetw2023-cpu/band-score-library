@@ -63,6 +63,8 @@ interface PerformanceSession {
   initialSongId: string
 }
 
+type ScoreViewMode = 'live' | 'original'
+
 function getDriveFileId(url: string) {
   return url.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i)?.[1] ?? ''
 }
@@ -1186,11 +1188,21 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
   const liveSheet = chordSheet ?? structuredSheet
   const canTranspose = Boolean(liveSheet?.originalKey)
   const inlineScoreUrl = song ? getInlineScoreUrl(song.scoreUrl) : ''
+  const hasOriginalScore = Boolean(song?.scoreUrl)
   const [offset, setOffset] = useState(0)
   const [performanceKey, setPerformanceKey] = useState('')
+  const [scoreViewMode, setScoreViewMode] = useState<ScoreViewMode>(() => (
+    window.localStorage.getItem('ensemble-live-score-view') === 'original' ? 'original' : 'live'
+  ))
   const [fontScale, setFontScale] = useState(() => Number(window.localStorage.getItem('ensemble-live-font-scale')) || 1)
   const [renderedSheet, setRenderedSheet] = useState({ songId: '', offset: 0, html: '' })
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false)
+  const canSwitchScoreView = Boolean(liveSheet && hasOriginalScore)
+  const visibleScoreView: ScoreViewMode = canSwitchScoreView
+    ? scoreViewMode
+    : liveSheet
+      ? 'live'
+      : 'original'
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -1212,7 +1224,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
     shellRef.current?.style.setProperty('--performance-compact-opacity', '0')
     headerCollapsedRef.current = false
     setIsHeaderCollapsed(false)
-  }, [activeIndex])
+  }, [activeIndex, visibleScoreView])
 
   useLayoutEffect(() => {
     const shell = shellRef.current
@@ -1259,18 +1271,23 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
     window.localStorage.setItem(`ensemble-live-key:${song.id}`, nextKey)
   }
 
+  function updateScoreView(nextView: ScoreViewMode) {
+    setScoreViewMode(nextView)
+    window.localStorage.setItem('ensemble-live-score-view', nextView)
+  }
+
   useEffect(() => {
     if (!song) return
     function handleKeyDown(event: KeyboardEvent) {
-      if ((event.key === '+' || event.key === '=') && canTranspose) updateOffset(offset + 1)
-      if (event.key === '-' && canTranspose) updateOffset(offset - 1)
-      if (event.key === '0' && canTranspose) updateOffset(0)
+      if ((event.key === '+' || event.key === '=') && canTranspose && visibleScoreView === 'live') updateOffset(offset + 1)
+      if (event.key === '-' && canTranspose && visibleScoreView === 'live') updateOffset(offset - 1)
+      if (event.key === '0' && canTranspose && visibleScoreView === 'live') updateOffset(0)
       if (event.key === 'ArrowLeft' && activeIndex > 0) setActiveIndex((current) => current - 1)
       if (event.key === 'ArrowRight' && activeIndex < songs.length - 1) setActiveIndex((current) => current + 1)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activeIndex, canTranspose, offset, song, songs.length])
+  }, [activeIndex, canTranspose, offset, song, songs.length, visibleScoreView])
 
   useEffect(() => {
     if (!chordSheet) {
@@ -1293,6 +1310,11 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
 
   const targetKey = liveSheet?.originalKey ? currentKey(liveSheet.originalKey, offset) : performanceKey
   const visibleSheet = song && renderedSheet.songId === song.id && renderedSheet.offset === offset ? renderedSheet.html : ''
+  const titleDescription = visibleScoreView === 'original'
+    ? '原始歌譜 · 依上傳檔案顯示'
+    : liveSheet
+      ? `${liveSheet.originalKey ? `原調 ${liveSheet.originalKey}` : '原調待補'} · ${liveSheet.sourceLabel}`
+      : '尚無結構化和弦譜 · 可記錄演出 Key'
 
   function goToSong(nextIndex: number) {
     if (nextIndex < 0 || nextIndex >= songs.length) return
@@ -1354,7 +1376,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
           <header ref={headerRef} className={`performance-header${isHeaderCollapsed ? ' is-collapsed' : ''}`}>
             <button type="button" className="performance-compact-header" onClick={expandPerformanceHeader} aria-label="展開現場模式控制列" aria-hidden={!isHeaderCollapsed} tabIndex={isHeaderCollapsed ? 0 : -1}>
               <strong>{song.title}</strong>
-              <span><small>Key</small>{targetKey || '—'}</span>
+              <span><small>{visibleScoreView === 'original' ? '檢視' : 'Key'}</small>{visibleScoreView === 'original' ? '原譜' : targetKey || '—'}</span>
             </button>
 
             <div className="performance-header-main" aria-hidden={isHeaderCollapsed}>
@@ -1362,7 +1384,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
                 <div>
                   <span className="performance-kicker">現場模式</span>
                   <h2 id="performance-title">{song.title}</h2>
-                  <p>{liveSheet ? `${liveSheet.originalKey ? `原調 ${liveSheet.originalKey}` : '原調待補'} · ${liveSheet.sourceLabel}` : '尚無結構化和弦譜 · 可記錄演出 Key'}</p>
+                  <p>{titleDescription}</p>
                 </div>
                 <button type="button" className="performance-close" onClick={() => dialogRef.current?.close()} aria-label="關閉現場和弦譜"><X size={23} /></button>
               </div>
@@ -1375,8 +1397,24 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
                 </nav>
               )}
 
-              <div className="performance-toolbar">
-                {canTranspose ? (
+              {canSwitchScoreView && (
+                <div className="performance-view-switcher" role="group" aria-label="選擇現場模式顯示的歌譜">
+                  <button type="button" className={visibleScoreView === 'live' ? 'is-active' : undefined} onClick={() => updateScoreView('live')} aria-pressed={visibleScoreView === 'live'}>
+                    <FileText size={18} aria-hidden="true" /><span>現場譜</span>
+                  </button>
+                  <button type="button" className={visibleScoreView === 'original' ? 'is-active' : undefined} onClick={() => updateScoreView('original')} aria-pressed={visibleScoreView === 'original'}>
+                    <FileMusic size={18} aria-hidden="true" /><span>原始譜</span>
+                  </button>
+                </div>
+              )}
+
+              <div className={`performance-toolbar${visibleScoreView === 'original' && liveSheet ? ' is-original' : ''}`}>
+                {visibleScoreView === 'original' && liveSheet ? (
+                  <div className="performance-original-status">
+                    <FileMusic size={22} aria-hidden="true" />
+                    <span><strong>正在顯示原始歌譜</strong><small>PDF 依原檔顯示，不套用升降 Key</small></span>
+                  </div>
+                ) : canTranspose ? (
                   <div className="key-stepper" aria-label="調整歌曲 Key">
                     <button type="button" onClick={() => updateOffset(offset - 1)} aria-label="降低一個半音"><Minus size={24} /></button>
                     <div aria-live="polite"><small>目前 Key</small><strong>{targetKey}</strong><span>{transposeLabel(offset)}</span></div>
@@ -1391,22 +1429,22 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
                     </select>
                   </label>
                 )}
-                <button type="button" className="performance-tool" onClick={() => updateOffset(0)} disabled={!canTranspose || offset === 0}><RotateCcw size={18} aria-hidden="true" /><span>恢復原調</span></button>
-                <div className="font-stepper" aria-label={liveSheet ? '調整和弦譜字體大小' : '調整歌譜大小'}>
-                  <button type="button" onClick={() => updateFontScale(fontScale - 0.1)} disabled={fontScale <= 0.5} aria-label={liveSheet ? '縮小字體' : '縮小歌譜'}><ZoomOut size={19} /></button>
+                {visibleScoreView === 'live' && <button type="button" className="performance-tool" onClick={() => updateOffset(0)} disabled={!canTranspose || offset === 0}><RotateCcw size={18} aria-hidden="true" /><span>恢復原調</span></button>}
+                <div className="font-stepper" aria-label={visibleScoreView === 'live' ? '調整和弦譜字體大小' : '調整原始歌譜大小'}>
+                  <button type="button" onClick={() => updateFontScale(fontScale - 0.1)} disabled={fontScale <= 0.5} aria-label={visibleScoreView === 'live' ? '縮小字體' : '縮小原始歌譜'}><ZoomOut size={19} /></button>
                   <span>{Math.round(fontScale * 100)}%</span>
-                  <button type="button" onClick={() => updateFontScale(fontScale + 0.1)} disabled={fontScale >= 1.4} aria-label={liveSheet ? '放大字體' : '放大歌譜'}><ZoomIn size={19} /></button>
+                  <button type="button" onClick={() => updateFontScale(fontScale + 0.1)} disabled={fontScale >= 1.4} aria-label={visibleScoreView === 'live' ? '放大字體' : '放大原始歌譜'}><ZoomIn size={19} /></button>
                 </div>
               </div>
             </div>
           </header>
 
-          <main ref={sheetWrapRef} className="performance-sheet-wrap" style={{ '--sheet-scale': fontScale } as React.CSSProperties} aria-busy={Boolean(chordSheet && !visibleSheet)} onScroll={handleSheetScroll} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-            {chordSheet
+          <main ref={sheetWrapRef} className="performance-sheet-wrap" style={{ '--sheet-scale': fontScale } as React.CSSProperties} aria-busy={visibleScoreView === 'live' && Boolean(chordSheet && !visibleSheet)} onScroll={handleSheetScroll} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+            {visibleScoreView === 'live' && chordSheet
               ? visibleSheet
                 ? <div className="performance-sheet" dangerouslySetInnerHTML={{ __html: visibleSheet }} />
                 : <div className="performance-loading"><LoaderCircle size={24} className="spin" aria-hidden="true" />正在準備和弦譜</div>
-              : structuredSheet
+              : visibleScoreView === 'live' && structuredSheet
                 ? <StructuredPerformanceSheet sheet={structuredSheet} offset={offset} targetKey={targetKey} />
               : inlineScoreUrl
                 ? <div className="performance-pdf-shell">

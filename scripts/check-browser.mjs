@@ -25,7 +25,7 @@ await mkdir('artifacts', { recursive: true })
 
 try {
   const desktop = await browser.newPage({ viewport: { width: 1440, height: 1100 } })
-  await desktop.goto(baseUrl, { waitUntil: 'networkidle' })
+  await desktop.goto(baseUrl, { waitUntil: 'load' })
   assert(await desktop.getByRole('heading', { name: '全部樂譜' }).isVisible(), '桌面版未顯示樂譜庫標題')
   assert((await desktop.locator('.song-card').count()) === 30, '桌面版應先顯示 30 首，避免一次渲染 207 張卡片')
 
@@ -54,6 +54,14 @@ try {
   await desktop.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().waitFor()
   assert(await desktop.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().isVisible(), '原調和弦內容未渲染')
   await assertRhythmRowsInline(desktop, '桌面版')
+  assert(await desktop.getByRole('button', { name: '現場譜' }).getAttribute('aria-pressed') === 'true', '現場模式沒有預設顯示現場譜')
+  await desktop.getByRole('button', { name: '原始譜' }).click()
+  assert(await desktop.getByRole('button', { name: '原始譜' }).getAttribute('aria-pressed') === 'true', '無法切換到原始譜')
+  assert(await desktop.getByText('PDF 依原檔顯示，不套用升降 Key').isVisible(), '原始譜模式沒有說明 PDF 不會移調')
+  assert(await desktop.locator('.performance-pdf-shell').isVisible(), '原始譜沒有在現場模式內顯示')
+  assert(!(await desktop.getByRole('button', { name: '升高一個半音' }).isVisible()), '原始譜模式仍顯示移調控制')
+  await desktop.getByRole('button', { name: '現場譜' }).click()
+  await desktop.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().waitFor()
   await desktop.getByRole('button', { name: '升高一個半音' }).click()
   await desktop.waitForFunction(() => document.querySelector('.key-stepper strong')?.textContent === 'Eb')
   await desktop.locator('.performance-sheet .chord', { hasText: 'Abmaj7' }).first().waitFor()
@@ -77,12 +85,12 @@ try {
       '讚美-073-天上的門打開',
     ]))
   })
-  await desktop.reload({ waitUntil: 'networkidle' })
+  await desktop.reload({ waitUntil: 'load' })
   await desktop.getByRole('button', { name: /本週歌單/ }).first().click()
   assert(await desktop.getByRole('heading', { name: '本週排練歌單' }).isVisible(), '歌單頁未開啟')
   await desktop.getByRole('button', { name: '將 天上的門打開 往上移' }).click()
   assert((await desktop.locator('.setlist-card li').first().locator('.setlist-song strong').textContent()) === '天上的門打開', '往上按鈕沒有更新歌單順序')
-  await desktop.reload({ waitUntil: 'networkidle' })
+  await desktop.reload({ waitUntil: 'load' })
   await desktop.getByRole('button', { name: /本週歌單/ }).first().click()
   assert((await desktop.locator('.setlist-card li').first().locator('.setlist-song strong').textContent()) === '天上的門打開', '調整後的歌單順序沒有儲存')
   await desktop.getByRole('button', { name: '將 天上的門打開 往下移' }).click()
@@ -126,14 +134,14 @@ try {
   assert(await desktop.getByText('取得上傳權限後顯示紀錄。').isVisible(), '未授權時沒有隱藏上傳紀錄')
 
   const shared = await browser.newPage({ viewport: { width: 1100, height: 900 } })
-  await shared.goto(`${baseUrl}#upload=${'a'.repeat(43)}`, { waitUntil: 'networkidle' })
+  await shared.goto(`${baseUrl}#upload=${'a'.repeat(43)}`, { waitUntil: 'load' })
   assert(await shared.getByText('你正透過分享網址上傳，不需要登入。').isVisible(), '分享網址沒有直接開啟免登入上傳模式')
   assert(await shared.getByText('選擇檔案，或拖曳到這裡').isVisible(), '分享網址持有者沒有顯示上傳表單')
   assert(!shared.url().includes('#upload='), '分享憑證沒有從網址列移除')
   await shared.close()
 
-  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true })
-  await mobile.goto(baseUrl, { waitUntil: 'networkidle' })
+  const mobile = await browser.newPage({ viewport: { width: 375, height: 812 }, isMobile: true, reducedMotion: 'reduce' })
+  await mobile.goto(baseUrl, { waitUntil: 'load' })
   assert(await mobile.getByRole('heading', { name: '全部樂譜' }).isVisible(), '手機版未顯示樂譜庫標題')
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
   assert(!overflow, '手機版出現水平捲動')
@@ -143,9 +151,14 @@ try {
   await mobile.getByRole('button', { name: /現場模式/ }).click()
   await mobile.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().waitFor()
   await assertRhythmRowsInline(mobile, '手機版')
+  await mobile.getByRole('button', { name: '原始譜' }).click()
+  assert(await mobile.locator('.performance-pdf-shell').isVisible(), '手機版無法切換到原始譜')
+  await mobile.screenshot({ path: 'artifacts/live-original-mobile-verified.png', fullPage: false })
+  await mobile.getByRole('button', { name: '現場譜' }).click()
+  await mobile.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().waitFor()
   const mobileLiveOverflow = await mobile.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
   assert(!mobileLiveOverflow, '手機現場模式出現水平捲動')
-  for (const accessibleName of ['降低一個半音', '升高一個半音', '關閉現場和弦譜']) {
+  for (const accessibleName of ['現場譜', '原始譜', '降低一個半音', '升高一個半音', '關閉現場和弦譜']) {
     const box = await mobile.getByRole('button', { name: accessibleName }).boundingBox()
     assert(box && box.width >= 44 && box.height >= 44, `${accessibleName} 的觸控範圍小於 44px`)
   }
@@ -203,7 +216,7 @@ try {
       '讚美-073-天上的門打開',
     ]))
   })
-  await mobile.reload({ waitUntil: 'networkidle' })
+  await mobile.reload({ waitUntil: 'load' })
   await mobile.getByRole('button', { name: /本週歌單/ }).click()
   for (const accessibleName of ['拖曳調整 How Much Do I Love You 的順序', '將 天上的門打開 往上移', '從歌單移除 How Much Do I Love You']) {
     const box = await mobile.getByRole('button', { name: accessibleName }).boundingBox()
@@ -228,7 +241,7 @@ try {
   await mobile.getByRole('button', { name: '關閉現場和弦譜' }).click()
 
   await mobile.evaluate(() => navigator.serviceWorker.ready)
-  await mobile.reload({ waitUntil: 'networkidle' })
+  await mobile.reload({ waitUntil: 'load' })
   await mobile.context().setOffline(true)
   await mobile.reload({ waitUntil: 'domcontentloaded' })
   assert(await mobile.getByRole('heading', { name: '全部樂譜' }).isVisible(), '離線時無法開啟已快取的合奏庫')
@@ -236,7 +249,7 @@ try {
 
   for (const viewport of [{ width: 375, height: 812 }, { width: 844, height: 390 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }]) {
     const page = await browser.newPage({ viewport, isMobile: viewport.width < 900 })
-    await page.goto(baseUrl, { waitUntil: 'networkidle' })
+    await page.goto(baseUrl, { waitUntil: 'load' })
     const hasOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
     assert(!hasOverflow, `${viewport.width}×${viewport.height} 出現水平捲動`)
     await page.close()
