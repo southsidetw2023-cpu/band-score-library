@@ -1043,6 +1043,25 @@ function StructuredPerformanceSheet({ sheet, offset, targetKey }: { sheet: Struc
     <div className="performance-sheet structured-performance-sheet" data-review-status={sheet.reviewStatus}>
       {sheet.rows.map((row, index) => {
         if (row.type === 'section') return <h3 key={`${index}-${row.text}`} className="structured-section">{row.text}</h3>
+        if (row.type === 'chords' && row.positions?.length) {
+          return (
+            <div
+              key={`${index}-${row.text}`}
+              className="structured-row structured-chords structured-chords-positioned"
+              aria-label={transposeChordText(row.text, offset, preferFlats)}
+              data-alignment={row.alignment}
+            >
+              {row.positions.map((position, positionIndex) => (
+                <span
+                  key={`${positionIndex}-${position.text}`}
+                  style={{ '--chord-offset': `${position.offsetEm}em` } as React.CSSProperties}
+                >
+                  {transposeChordText(position.text, offset, preferFlats)}{positionIndex < row.positions!.length - 1 ? ' ' : ''}
+                </span>
+              ))}
+            </div>
+          )
+        }
         if (row.type === 'chords') return <div key={`${index}-${row.text}`} className="structured-row structured-chords">{transposeChordText(row.text, offset, preferFlats)}</div>
         return <div key={`${index}-${row.text}`} className="structured-row structured-lyrics">{row.text}</div>
       })}

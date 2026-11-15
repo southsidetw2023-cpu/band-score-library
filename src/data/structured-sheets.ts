@@ -2,9 +2,16 @@ import structuredSheetsData from './structured-sheets.generated.json'
 
 export type StructuredSheetRowType = 'section' | 'chords' | 'lyrics'
 
+export interface StructuredChordPosition {
+  text: string
+  offsetEm: number
+}
+
 export interface StructuredSheetRow {
   type: StructuredSheetRowType
   text: string
+  positions?: StructuredChordPosition[]
+  alignment?: 'source' | 'estimated'
 }
 
 export interface StructuredSheetData {

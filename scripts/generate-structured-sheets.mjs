@@ -341,21 +341,21 @@ function mergeSuperscripts(lines) {
 }
 
 function segmentLine(line, pageWidth, splitBody) {
-  if (!splitBody) return [{ column: 'full', y: line.y, text: cleanText(line.items.map((item) => item.text).join(' ')) }]
+  if (!splitBody) return [{ column: 'full', y: line.y, text: cleanText(line.items.map((item) => item.text).join(' ')), items: line.items }]
   const midpoint = pageWidth / 2
   const left = line.items.filter((item) => item.x < midpoint)
   const right = line.items.filter((item) => item.x >= midpoint)
   if (left.length === 0 || right.length === 0) {
-    return [{ column: left.length ? 'left' : 'right', y: line.y, text: cleanText(line.items.map((item) => item.text).join(' ')) }]
+    return [{ column: left.length ? 'left' : 'right', y: line.y, text: cleanText(line.items.map((item) => item.text).join(' ')), items: line.items }]
   }
   const leftEdge = Math.max(...left.map((item) => item.x + item.width))
   const rightEdge = Math.min(...right.map((item) => item.x))
   if (rightEdge - leftEdge < 18) {
-    return [{ column: 'full', y: line.y, text: cleanText(line.items.map((item) => item.text).join(' ')) }]
+    return [{ column: 'full', y: line.y, text: cleanText(line.items.map((item) => item.text).join(' ')), items: line.items }]
   }
   return [
-    { column: 'left', y: line.y, text: cleanText(left.map((item) => item.text).join(' ')) },
-    { column: 'right', y: line.y, text: cleanText(right.map((item) => item.text).join(' ')) },
+    { column: 'left', y: line.y, text: cleanText(left.map((item) => item.text).join(' ')), items: left },
+    { column: 'right', y: line.y, text: cleanText(right.map((item) => item.text).join(' ')), items: right },
   ]
 }
 
@@ -424,7 +424,7 @@ function ocrSegments(page) {
     const separated = left.length > 0 && right.length > 0 && rightEdge - leftEdge >= 0.035
     const add = (column, items) => {
       const text = cleanText(items.map((item) => item.text).join(' '))
-      if (text) columns[column].push({ column, y: group.y, text })
+      if (text) columns[column].push({ column, y: group.y, text, items })
     }
     if (separated) {
       add('left', left)
@@ -437,6 +437,120 @@ function ocrSegments(page) {
   return [...columns.left, ...columns.full, ...columns.right]
 }
 
+function median(values) {
+  if (values.length === 0) return 0
+  const ordered = [...values].sort((left, right) => left - right)
+  const middle = Math.floor(ordered.length / 2)
+  return ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2
+}
+
+function chordTokensWithAnchors(items) {
+  return items.flatMap((item) => {
+    const normalized = normalizeChordLine(cleanText(item.text))
+    const tokens = normalized.split(/\s+/).filter((token) => isChordToken(token) || rhythmPattern.test(token))
+    if (tokens.length === 0) return []
+    return tokens.map((token, index) => ({
+      text: token,
+      x: item.x + (tokens.length === 1 ? 0 : item.width * index / tokens.length),
+    }))
+  })
+}
+
+function rawChordAnchors(items, pageWidth) {
+  const anchors = []
+  let previousText = ''
+  for (const item of items) {
+    const text = item.text.trim()
+    const match = text.match(/^[|:(]*\s*([A-G](?:#|b)?)(?=$|[^a-z])/)
+    if (match && !previousText.endsWith('/')) anchors.push({ text: match[1], x: item.x / pageWidth })
+    previousText = text
+  }
+  return anchors
+}
+
+function matchChordAnchors(expected, anchors) {
+  if (anchors.length === expected.length) return anchors
+  for (const exactAccidental of [true, false]) {
+    const matched = []
+    let cursor = 0
+    for (const token of expected) {
+      const root = token.match(/^([A-G](?:#|b)?)/)?.[1]
+      if (!root) return []
+      const index = anchors.findIndex((anchor, anchorIndex) => {
+        if (anchorIndex < cursor) return false
+        return exactAccidental ? anchor.text === root : anchor.text[0] === root[0]
+      })
+      if (index < 0) break
+      matched.push(anchors[index])
+      cursor = index + 1
+    }
+    if (matched.length === expected.length) return matched
+  }
+  return []
+}
+
+function addChordPositions(row, segment, rawSegments, columnBase, lyricHeight, pageWidth, pageHeight) {
+  if (row?.type !== 'chords' || !segment?.items?.length || lyricHeight <= 0) return row
+  const expected = row.text.split(/\s+/).filter(Boolean)
+  if (!expected.every((token) => isChordToken(token))) return row
+  const ocrAnchors = chordTokensWithAnchors(segment.items)
+  const rawAnchors = rawSegments
+    .filter((candidate) => candidate.column === segment.column || candidate.column === 'full' || segment.column === 'full')
+    .sort((left, right) => Math.abs(left.y - segment.y) - Math.abs(right.y - segment.y))
+    .map((candidate) => matchChordAnchors(expected, candidate.items?.length ? rawChordAnchors(candidate.items, pageWidth) : []))
+    .find((candidate) => candidate.length === expected.length) ?? []
+  const anchors = matchChordAnchors(expected, ocrAnchors).length === expected.length
+    ? matchChordAnchors(expected, ocrAnchors)
+    : matchChordAnchors(expected, rawAnchors)
+  if (anchors.length !== expected.length) return row
+  const positions = spreadChordPositions(anchors.map((anchor, index) => ({
+    text: expected[index],
+    offsetEm: Math.max(0, Math.round(((anchor.x - columnBase) * pageWidth / (lyricHeight * pageHeight)) * 100) / 100),
+  })))
+  for (let index = 1; index < positions.length; index += 1) {
+    if (positions[index].offsetEm <= positions[index - 1].offsetEm) return row
+  }
+  return { ...row, positions, alignment: 'source' }
+}
+
+function spreadChordPositions(positions) {
+  return positions.reduce((result, position) => {
+    const previous = result[result.length - 1]
+    if (!previous) return [{ ...position }]
+    const minimumGap = Math.max(2.1, previous.text.length * 0.62 + 0.35)
+    return [...result, {
+      ...position,
+      offsetEm: Math.round(Math.max(position.offsetEm, previous.offsetEm + minimumGap) * 100) / 100,
+    }]
+  }, [])
+}
+
+function visualTextWidth(text) {
+  return Array.from(text).reduce((width, character) => {
+    if (/\p{Script=Han}/u.test(character)) return width + 1
+    if (/\s/.test(character)) return width + 0.35
+    return width + 0.56
+  }, 0)
+}
+
+function fillMissingChordPositions(rows) {
+  return rows.map((row, index) => {
+    if (row.type !== 'chords' || row.positions || rows[index + 1]?.type !== 'lyrics') return row
+    const tokens = row.text.split(/\s+/).filter(Boolean)
+    if (tokens.length < 2 || !tokens.every((token) => isChordToken(token))) return row
+    const lyricWidth = visualTextWidth(rows[index + 1].text)
+    const span = Math.min(26, Math.max((tokens.length - 1) * 3.25, lyricWidth - 1))
+    return {
+      ...row,
+      positions: spreadChordPositions(tokens.map((text, tokenIndex) => ({
+        text,
+        offsetEm: Math.round((tokenIndex * span / (tokens.length - 1)) * 100) / 100,
+      }))),
+      alignment: 'estimated',
+    }
+  })
+}
+
 function extractedSegments(page) {
   return mergeSuperscripts(page.lines).flatMap((line) => segmentLine(line, page.width, true).map((segment) => ({
     ...segment,
@@ -446,8 +560,22 @@ function extractedSegments(page) {
 
 function ocrPageToRows(ocrPage, extractedPage) {
   const rawSegments = extractedSegments(extractedPage)
+  const segments = ocrSegments(ocrPage)
+  const bodyItems = segments.flatMap((segment) => segment.items ?? [])
+  const lyricHeights = bodyItems
+    .filter((item) => classify(item.text)?.type === 'lyrics')
+    .map((item) => item.height)
+    .filter((height) => height > 0)
+  const lyricHeight = median(lyricHeights) || median(bodyItems.map((item) => item.height).filter((height) => height > 0))
+  const columnBases = Object.fromEntries(['left', 'right', 'full'].map((column) => {
+    const starts = segments
+      .filter((segment) => segment.column === column && segment.items?.length)
+      .map((segment) => Math.min(...segment.items.map((item) => item.x)))
+      .sort((left, right) => left - right)
+    return [column, starts[Math.min(starts.length - 1, Math.floor(starts.length * 0.2))] ?? 0]
+  }))
   const rows = []
-  for (const segment of ocrSegments(ocrPage)) {
+  for (const segment of segments) {
     const nearest = rawSegments
       .filter((candidate) => candidate.column === segment.column || candidate.column === 'full' || segment.column === 'full')
       .map((candidate) => ({ candidate, distance: Math.abs(candidate.y - segment.y) }))
@@ -468,13 +596,22 @@ function ocrPageToRows(ocrPage, extractedPage) {
         ? rawClass
         : ocrClass
     if (!selected) continue
-    const prefix = splitSectionLine(selected.text)
+    const positioned = addChordPositions(
+      selected,
+      segment,
+      rawSegments,
+      columnBases[segment.column] ?? 0,
+      lyricHeight,
+      extractedPage.width,
+      extractedPage.height,
+    )
+    const prefix = splitSectionLine(positioned.text)
     if (prefix?.remainder) {
       rows.push({ type: 'section', text: prefix.section })
       const remainder = classify(prefix.remainder)
       if (remainder) rows.push(remainder)
     } else {
-      rows.push(selected)
+      rows.push(positioned)
     }
   }
   const deduplicated = rows.filter((row, index) => index === 0 || row.type !== rows[index - 1].type || row.text !== rows[index - 1].text)
@@ -500,7 +637,7 @@ for (const file of files) {
   } catch {
     // OCR is a review enhancement; extraction remains the fallback.
   }
-  const rows = rowOverrides[extraction.songId] || ocrRows || extractedRows
+  const rows = fillMissingChordPositions(rowOverrides[extraction.songId] || ocrRows || extractedRows)
   if (rows.length === 0) continue
   const isReviewed = Boolean(rowOverrides[extraction.songId] || ocrRows)
   sheets[extraction.songId] = {
