@@ -12,6 +12,7 @@
     "check": "tsc -b --pretty false",
     "check:data": "node scripts/check-data.mjs",
     "check:structured": "node scripts/check-structured-sheets.mjs",
+    "check:mobile-original": "node scripts/check-mobile-original.mjs",
     "prepare:chords": "node scripts/prepare-chord-sheet-batch.mjs",
     "generate:structured-sheets": "node scripts/generate-structured-sheets.mjs",
     "check:browser": "node scripts/check-browser.mjs"

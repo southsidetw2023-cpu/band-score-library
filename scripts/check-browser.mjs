@@ -75,7 +75,7 @@ try {
   assert(await desktop.getByRole('button', { name: '現場譜' }).getAttribute('aria-pressed') === 'true', '現場模式沒有預設顯示現場譜')
   await desktop.getByRole('button', { name: '原始譜' }).click()
   assert(await desktop.getByRole('button', { name: '原始譜' }).getAttribute('aria-pressed') === 'true', '無法切換到原始譜')
-  assert(await desktop.getByText('PDF 依原檔顯示，不套用升降 Key').isVisible(), '原始譜模式沒有說明 PDF 不會移調')
+  assert(await desktop.getByText('PDF 依原檔顯示，可雙指縮放').isVisible(), '原始譜模式沒有說明可雙指縮放')
   assert(await desktop.locator('.performance-pdf-shell').isVisible(), '原始譜沒有在現場模式內顯示')
   assert(!(await desktop.getByRole('button', { name: '升高一個半音' }).isVisible()), '原始譜模式仍顯示移調控制')
   await desktop.getByRole('button', { name: '現場譜' }).click()
@@ -171,6 +171,31 @@ try {
   await assertRhythmRowsInline(mobile, '手機版')
   await mobile.getByRole('button', { name: '原始譜' }).click()
   assert(await mobile.locator('.performance-pdf-shell').isVisible(), '手機版無法切換到原始譜')
+  await mobile.locator('.performance-pdf-page canvas').first().waitFor()
+  const originalPage = mobile.locator('.performance-pdf-page').first()
+  const originalCanvas = mobile.locator('.performance-pdf-page canvas').first()
+  const originalPageBox = await originalPage.boundingBox()
+  const originalCanvasBox = await originalCanvas.boundingBox()
+  assert(originalPageBox && originalCanvasBox, '手機原始譜沒有可量測的頁面')
+  await mobile.getByRole('button', { name: '放大原始歌譜' }).click()
+  await mobile.waitForFunction(() => document.querySelector('.font-stepper span')?.textContent === '110%')
+  const enlargedCanvasBox = await originalCanvas.boundingBox()
+  assert(enlargedCanvasBox && enlargedCanvasBox.x >= originalPageBox.x - 1, '手機原始譜放大後左側跑出可捲動範圍')
+  const originalScrollMetrics = await mobile.locator('.performance-sheet-wrap').evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }))
+  assert(originalScrollMetrics.scrollWidth > originalScrollMetrics.clientWidth, '手機原始譜放大後沒有可橫向捲動')
+  await mobile.locator('.performance-sheet-wrap').evaluate((target) => {
+    const makeTouch = (identifier, clientX, clientY) => new Touch({ identifier, target, clientX, clientY })
+    const startTouches = [makeTouch(1, 130, 520), makeTouch(2, 245, 520)]
+    const movedTouches = [makeTouch(1, 85, 520), makeTouch(2, 290, 520)]
+    target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: startTouches, changedTouches: startTouches }))
+    target.dispatchEvent(new TouchEvent('touchmove', { bubbles: true, cancelable: true, touches: movedTouches, changedTouches: movedTouches }))
+    target.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], changedTouches: movedTouches }))
+  })
+  await mobile.waitForFunction(() => Number.parseInt(document.querySelector('.font-stepper span')?.textContent || '0', 10) > 110)
+  assert(await mobile.getByText('PDF 依原檔顯示，可雙指縮放').isVisible(), '手機原始譜沒有提示雙指縮放')
   await mobile.screenshot({ path: 'artifacts/live-original-mobile-verified.png', fullPage: false })
   await mobile.getByRole('button', { name: '現場譜' }).click()
   await mobile.locator('.performance-sheet .chord', { hasText: 'Gmaj7' }).first().waitFor()
@@ -273,7 +298,7 @@ try {
     await page.close()
   }
 
-  console.log('瀏覽器驗證完成：207 首資料、歌單排序與儲存、演出歌單滑動切歌、即時轉調、50% 字體縮放、Key 記憶、離線快取、歌曲詳情、Google 登入／上傳鎖定狀態、管理中心，以及手機／平板直橫向皆通過。')
+  console.log('瀏覽器驗證完成：207 首資料、歌單排序與儲存、演出歌單滑動切歌、即時轉調、原始譜放大／橫移／雙指縮放、50% 字體縮放、Key 記憶、離線快取、歌曲詳情、Google 登入／上傳鎖定狀態、管理中心，以及手機／平板直橫向皆通過。')
 } finally {
   await browser.close()
 }

@@ -1091,6 +1091,7 @@ function markRhythmRows(html: string) {
 
 function PdfPage({ page, zoom, pageNumber }: { page: PDFPageProxy; zoom: number; pageNumber: number }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const renderTaskRef = useRef<RenderTask | null>(null)
   const [availableWidth, setAvailableWidth] = useState(0)
@@ -1108,7 +1109,8 @@ function PdfPage({ page, zoom, pageNumber }: { page: PDFPageProxy; zoom: number;
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || availableWidth <= 0) return
+    const stage = stageRef.current
+    if (!canvas || !stage || availableWidth <= 0) return
 
     renderTaskRef.current?.cancel()
     const unscaledViewport = page.getViewport({ scale: 1 })
@@ -1122,6 +1124,8 @@ function PdfPage({ page, zoom, pageNumber }: { page: PDFPageProxy; zoom: number;
     canvas.height = Math.ceil(renderViewport.height)
     canvas.style.width = `${cssWidth}px`
     canvas.style.height = `${cssHeight}px`
+    stage.style.width = `${cssWidth}px`
+    stage.style.height = `${cssHeight}px`
 
     const context = canvas.getContext('2d', { alpha: false })
     if (!context) return
@@ -1140,7 +1144,9 @@ function PdfPage({ page, zoom, pageNumber }: { page: PDFPageProxy; zoom: number;
 
   return (
     <div ref={containerRef} className="performance-pdf-page">
-      <canvas ref={canvasRef} aria-label={`歌譜第 ${pageNumber} 頁`} />
+      <div ref={stageRef} className="performance-pdf-canvas-stage">
+        <canvas ref={canvasRef} aria-label={`歌譜第 ${pageNumber} 頁`} />
+      </div>
     </div>
   )
 }
@@ -1206,6 +1212,16 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
   const headerRef = useRef<HTMLElement>(null)
   const sheetWrapRef = useRef<HTMLElement>(null)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const pinchRef = useRef<{
+    startDistance: number
+    startScale: number
+    startScrollLeft: number
+    startScrollTop: number
+    centerX: number
+    centerY: number
+  } | null>(null)
+  const pinchFrameRef = useRef<number | null>(null)
+  const pendingPinchScaleRef = useRef(1)
   const scrollFrameRef = useRef<number | null>(null)
   const pendingScrollTopRef = useRef(0)
   const headerCollapsedRef = useRef(false)
@@ -1223,7 +1239,10 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
   const [scoreViewMode, setScoreViewMode] = useState<ScoreViewMode>(() => (
     window.localStorage.getItem('ensemble-live-score-view') === 'original' ? 'original' : 'live'
   ))
-  const [fontScale, setFontScale] = useState(() => Number(window.localStorage.getItem('ensemble-live-font-scale')) || 1)
+  const [scoreScales, setScoreScales] = useState(() => ({
+    live: Math.min(1.4, Math.max(0.5, Number(window.localStorage.getItem('ensemble-live-font-scale')) || 1)),
+    original: Math.min(3, Math.max(0.5, Number(window.localStorage.getItem('ensemble-live-original-scale')) || 1)),
+  }))
   const [renderedSheet, setRenderedSheet] = useState({ songId: '', offset: 0, html: '' })
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false)
   const canSwitchScoreView = Boolean(liveSheet && hasOriginalScore)
@@ -1232,6 +1251,8 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
     : liveSheet
       ? 'live'
       : 'original'
+  const scoreScale = scoreScales[visibleScoreView]
+  const maximumScale = visibleScoreView === 'original' ? 3 : 1.4
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -1272,6 +1293,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
 
   useEffect(() => () => {
     if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current)
+    if (pinchFrameRef.current !== null) cancelAnimationFrame(pinchFrameRef.current)
   }, [])
 
   useEffect(() => {
@@ -1288,11 +1310,96 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
     window.localStorage.setItem(`ensemble-live-transpose:${song.id}`, String(normalized))
   }
 
-  function updateFontScale(nextScale: number) {
-    const normalized = Math.min(1.4, Math.max(0.5, Math.round(nextScale * 10) / 10))
-    setFontScale(normalized)
-    window.localStorage.setItem('ensemble-live-font-scale', String(normalized))
-  }
+  const normalizeScoreScale = useCallback((nextScale: number, view: ScoreViewMode, precision = 10) => {
+    const upperBound = view === 'original' ? 3 : 1.4
+    return Math.min(upperBound, Math.max(0.5, Math.round(nextScale * precision) / precision))
+  }, [])
+
+  const updateScoreScale = useCallback((nextScale: number, view = visibleScoreView) => {
+    const normalized = normalizeScoreScale(nextScale, view)
+    setScoreScales((current) => ({ ...current, [view]: normalized }))
+    window.localStorage.setItem(view === 'original' ? 'ensemble-live-original-scale' : 'ensemble-live-font-scale', String(normalized))
+  }, [normalizeScoreScale, visibleScoreView])
+
+  useEffect(() => {
+    const wrap = sheetWrapRef.current
+    if (!wrap || visibleScoreView !== 'original') return
+
+    const distanceBetween = (touches: TouchList) => Math.hypot(
+      touches[1].clientX - touches[0].clientX,
+      touches[1].clientY - touches[0].clientY,
+    )
+
+    const handlePinchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 2) return
+      event.preventDefault()
+      touchStartRef.current = null
+      const bounds = wrap.getBoundingClientRect()
+      const centerClientX = (event.touches[0].clientX + event.touches[1].clientX) / 2
+      const centerClientY = (event.touches[0].clientY + event.touches[1].clientY) / 2
+      pinchRef.current = {
+        startDistance: distanceBetween(event.touches),
+        startScale: scoreScale,
+        startScrollLeft: wrap.scrollLeft,
+        startScrollTop: wrap.scrollTop,
+        centerX: centerClientX - bounds.left,
+        centerY: centerClientY - bounds.top,
+      }
+      pendingPinchScaleRef.current = scoreScale
+    }
+
+    const handlePinchMove = (event: TouchEvent) => {
+      const pinch = pinchRef.current
+      if (!pinch || event.touches.length !== 2) return
+      event.preventDefault()
+      pendingPinchScaleRef.current = normalizeScoreScale(
+        pinch.startScale * (distanceBetween(event.touches) / pinch.startDistance),
+        'original',
+        100,
+      )
+      if (pinchFrameRef.current !== null) return
+      pinchFrameRef.current = requestAnimationFrame(() => {
+        pinchFrameRef.current = null
+        const nextScale = pendingPinchScaleRef.current
+        setScoreScales((current) => ({ ...current, original: nextScale }))
+      })
+    }
+
+    const handlePinchEnd = (event: TouchEvent) => {
+      if (!pinchRef.current || event.touches.length >= 2) return
+      event.preventDefault()
+      if (pinchFrameRef.current !== null) {
+        cancelAnimationFrame(pinchFrameRef.current)
+        pinchFrameRef.current = null
+        setScoreScales((current) => ({ ...current, original: pendingPinchScaleRef.current }))
+      }
+      window.localStorage.setItem('ensemble-live-original-scale', String(pendingPinchScaleRef.current))
+      pinchRef.current = null
+    }
+
+    wrap.addEventListener('touchstart', handlePinchStart, { passive: false })
+    wrap.addEventListener('touchmove', handlePinchMove, { passive: false })
+    wrap.addEventListener('touchend', handlePinchEnd, { passive: false })
+    wrap.addEventListener('touchcancel', handlePinchEnd, { passive: false })
+    return () => {
+      wrap.removeEventListener('touchstart', handlePinchStart)
+      wrap.removeEventListener('touchmove', handlePinchMove)
+      wrap.removeEventListener('touchend', handlePinchEnd)
+      wrap.removeEventListener('touchcancel', handlePinchEnd)
+    }
+  }, [normalizeScoreScale, scoreScale, visibleScoreView])
+
+  useEffect(() => {
+    const pinch = pinchRef.current
+    const wrap = sheetWrapRef.current
+    if (!pinch || !wrap || visibleScoreView !== 'original') return
+    const frame = requestAnimationFrame(() => {
+      const ratio = scoreScale / pinch.startScale
+      wrap.scrollLeft = (pinch.startScrollLeft + pinch.centerX) * ratio - pinch.centerX
+      wrap.scrollTop = (pinch.startScrollTop + pinch.centerY) * ratio - pinch.centerY
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [scoreScale, visibleScoreView])
 
   function updatePerformanceKey(nextKey: string) {
     if (!song || !chromaticKeys.includes(nextKey as typeof chromaticKeys[number])) return
@@ -1351,11 +1458,19 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
   }
 
   function handleTouchStart(event: React.TouchEvent<HTMLElement>) {
+    if (event.touches.length !== 1 || pinchRef.current) {
+      touchStartRef.current = null
+      return
+    }
     const touch = event.changedTouches[0]
     touchStartRef.current = { x: touch.clientX, y: touch.clientY }
   }
 
   function handleTouchEnd(event: React.TouchEvent<HTMLElement>) {
+    if (pinchRef.current || event.touches.length > 0) {
+      touchStartRef.current = null
+      return
+    }
     const start = touchStartRef.current
     touchStartRef.current = null
     if (!start) return
@@ -1441,7 +1556,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
                 {visibleScoreView === 'original' && liveSheet ? (
                   <div className="performance-original-status">
                     <FileMusic size={22} aria-hidden="true" />
-                    <span><strong>正在顯示原始歌譜</strong><small>PDF 依原檔顯示，不套用升降 Key</small></span>
+                    <span><strong>正在顯示原始歌譜</strong><small>PDF 依原檔顯示，可雙指縮放</small></span>
                   </div>
                 ) : canTranspose ? (
                   <div className="key-stepper" aria-label="調整歌曲 Key">
@@ -1460,15 +1575,15 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
                 )}
                 {visibleScoreView === 'live' && <button type="button" className="performance-tool" onClick={() => updateOffset(0)} disabled={!canTranspose || offset === 0}><RotateCcw size={18} aria-hidden="true" /><span>恢復原調</span></button>}
                 <div className="font-stepper" aria-label={visibleScoreView === 'live' ? '調整和弦譜字體大小' : '調整原始歌譜大小'}>
-                  <button type="button" onClick={() => updateFontScale(fontScale - 0.1)} disabled={fontScale <= 0.5} aria-label={visibleScoreView === 'live' ? '縮小字體' : '縮小原始歌譜'}><ZoomOut size={19} /></button>
-                  <span>{Math.round(fontScale * 100)}%</span>
-                  <button type="button" onClick={() => updateFontScale(fontScale + 0.1)} disabled={fontScale >= 1.4} aria-label={visibleScoreView === 'live' ? '放大字體' : '放大原始歌譜'}><ZoomIn size={19} /></button>
+                  <button type="button" onClick={() => updateScoreScale(scoreScale - 0.1)} disabled={scoreScale <= 0.5} aria-label={visibleScoreView === 'live' ? '縮小字體' : '縮小原始歌譜'}><ZoomOut size={19} /></button>
+                  <span aria-live="polite">{Math.round(scoreScale * 100)}%</span>
+                  <button type="button" onClick={() => updateScoreScale(scoreScale + 0.1)} disabled={scoreScale >= maximumScale} aria-label={visibleScoreView === 'live' ? '放大字體' : '放大原始歌譜'}><ZoomIn size={19} /></button>
                 </div>
               </div>
             </div>
           </header>
 
-          <main ref={sheetWrapRef} className="performance-sheet-wrap" style={{ '--sheet-scale': fontScale } as React.CSSProperties} aria-busy={visibleScoreView === 'live' && Boolean(chordSheet && !visibleSheet)} onScroll={handleSheetScroll} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+          <main ref={sheetWrapRef} className={`performance-sheet-wrap is-${visibleScoreView}`} style={{ '--sheet-scale': scoreScale } as React.CSSProperties} aria-busy={visibleScoreView === 'live' && Boolean(chordSheet && !visibleSheet)} onScroll={handleSheetScroll} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
             {visibleScoreView === 'live' && chordSheet
               ? visibleSheet
                 ? <div className="performance-sheet" dangerouslySetInnerHTML={{ __html: visibleSheet }} />
@@ -1478,7 +1593,7 @@ function PerformanceDialog({ session, onClose }: { session: PerformanceSession |
               : inlineScoreUrl
                 ? <div className="performance-pdf-shell">
                     <a className="performance-original-link" href={song.scoreUrl} target="_blank" rel="noreferrer">另開原始歌譜<ExternalLink size={16} aria-hidden="true" /></a>
-                    <PdfScoreViewer key={song.id} url={inlineScoreUrl} title={song.title} zoom={fontScale} />
+                    <PdfScoreViewer key={song.id} url={inlineScoreUrl} title={song.title} zoom={scoreScale} />
                   </div>
               : <section className="performance-missing">
                   <FileMusic size={38} aria-hidden="true" />
