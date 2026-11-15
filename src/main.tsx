@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist'
 import {
   BookOpen,
+  BookMarked,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -31,6 +32,7 @@ import {
   Plus,
   Presentation,
   RotateCcw,
+  Save,
   Search,
   ShieldCheck,
   Trash2,
@@ -46,6 +48,7 @@ import { getStructuredSheet, type StructuredSheetData } from './data/structured-
 import { GoogleSignInButton, uploadAuthorizationHeaders, useGoogleAuth, useShareAccess, type AuthState, type ShareAccessState } from './auth'
 import songsData from './data/songs.generated.json'
 import type { Song, ViewName } from './types'
+import { usePractice, type PracticeEntry, type PracticeStatus } from './practice'
 import './styles.css'
 
 const previewThemes = new Set(['slate-blue', 'forest-green', 'mono-blue'])
@@ -97,6 +100,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 const navItems: Array<{ id: ViewName; label: string; helper: string; icon: LucideIcon }> = [
   { id: 'library', label: '樂譜庫', helper: '搜尋與瀏覽', icon: LibraryBig },
   { id: 'setlist', label: '本週歌單', helper: '排練與演出', icon: ListMusic },
+  { id: 'practice', label: '個人練習', helper: '進度與筆記', icon: BookMarked },
   { id: 'admin', label: '管理中心', helper: '成員與匯入', icon: ShieldCheck },
 ]
 
@@ -127,6 +131,7 @@ function validSetlistIds(value: unknown) {
 function App() {
   const auth = useGoogleAuth()
   const share = useShareAccess()
+  const practice = usePractice(auth.credential)
   const [view, setView] = useState<ViewName>(() => share.active ? 'admin' : 'library')
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
@@ -299,6 +304,19 @@ function App() {
     setPerformanceSession({ songs: setlist, initialSongId: setlist[0].id })
   }
 
+  async function addToPractice(song: Song) {
+    const existing = practice.entries.find((entry) => entry.songId === song.id)
+    if (!existing) {
+      const initialKey = chromaticKeys.includes(song.key as typeof chromaticKeys[number]) ? song.key : ''
+      await practice.upsert({ songId: song.id, status: 'not_started', practiceKey: initialKey, notes: '' })
+    }
+    setSelectedSong(null)
+    setView('practice')
+  }
+
+  if (auth.loading) return <LoginGate auth={auth} loading />
+  if (!auth.user) return <LoginGate auth={auth} />
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">跳到主要內容</a>
@@ -317,8 +335,10 @@ function App() {
             setAvailability={setAvailability}
             filteredSongs={filteredSongs}
             setlistIds={setlistIds}
+            practiceIds={practice.entries.map((entry) => entry.songId)}
             onOpen={setSelectedSong}
             onAdd={addToSetlist}
+            onAddPractice={addToPractice}
           />
         )}
 
@@ -335,13 +355,42 @@ function App() {
           />
         )}
 
+        {view === 'practice' && (
+          <PracticeView
+            state={practice}
+            onBrowse={() => setView('library')}
+            onOpen={setSelectedSong}
+            onOpenLive={openLiveSheet}
+          />
+        )}
+
         {view === 'admin' && <AdminView auth={auth} share={share} />}
       </main>
 
       <MobileNav view={view} setView={setView} setlistCount={setlistIds.length} />
-      <SongDialog song={selectedSong} onClose={() => setSelectedSong(null)} onAdd={addToSetlist} onOpenLive={openLiveSheet} inSetlist={selectedSong ? setlistIds.includes(selectedSong.id) : false} />
+      <SongDialog song={selectedSong} onClose={() => setSelectedSong(null)} onAdd={addToSetlist} onAddPractice={addToPractice} onOpenLive={openLiveSheet} inSetlist={selectedSong ? setlistIds.includes(selectedSong.id) : false} inPractice={selectedSong ? practice.entries.some((entry) => entry.songId === selectedSong.id) : false} />
       <PerformanceDialog session={performanceSession} onClose={() => setPerformanceSession(null)} />
     </div>
+  )
+}
+
+function LoginGate({ auth, loading = false }: { auth: AuthState; loading?: boolean }) {
+  return (
+    <main className="login-gate">
+      <section className="login-card" aria-labelledby="login-title">
+        <img src={`${import.meta.env.BASE_URL}ppc-worship-logo.png`} alt="PPC 敬拜團" />
+        <p className="eyebrow">PPC WORSHIP TEAM</p>
+        <h1 id="login-title">PPC 敬拜團歌單</h1>
+        <p>請使用 Google 帳號確認身分。登入後可瀏覽樂譜，個人練習紀錄也會在手機與電腦間同步。</p>
+        {loading ? (
+          <p className="auth-loading" role="status"><LoaderCircle size={20} className="spin" aria-hidden="true" />正在確認登入狀態</p>
+        ) : (
+          <GoogleSignInButton onCredential={auth.refresh} disabled={auth.loading} />
+        )}
+        {auth.error && <p className="auth-message is-error" role="alert">{auth.error}</p>}
+        <small><LockKeyhole size={14} aria-hidden="true" />任何 Google 帳號皆可登入；管理功能僅限管理者。</small>
+      </section>
+    </main>
   )
 }
 
@@ -417,8 +466,10 @@ interface LibraryViewProps {
   setAvailability: (value: '全部' | '已有歌譜' | '待補歌譜') => void
   filteredSongs: Song[]
   setlistIds: string[]
+  practiceIds: string[]
   onOpen: (song: Song) => void
   onAdd: (song: Song) => void
+  onAddPractice: (song: Song) => void
 }
 
 function LibraryView(props: LibraryViewProps) {
@@ -485,7 +536,7 @@ function LibraryView(props: LibraryViewProps) {
       {props.filteredSongs.length > 0 ? (
         <div className="song-grid">
           {visibleSongs.map((song) => (
-            <SongCard key={song.id} song={song} inSetlist={props.setlistIds.includes(song.id)} onOpen={props.onOpen} onAdd={props.onAdd} />
+            <SongCard key={song.id} song={song} inSetlist={props.setlistIds.includes(song.id)} inPractice={props.practiceIds.includes(song.id)} onOpen={props.onOpen} onAdd={props.onAdd} onAddPractice={props.onAddPractice} />
           ))}
         </div>
       ) : (
@@ -510,7 +561,7 @@ function SummaryMetric({ value, label }: { value: number; label: string }) {
   return <span className="summary-metric"><strong>{value}</strong><small>{label}</small></span>
 }
 
-function SongCard({ song, inSetlist, onOpen, onAdd }: { song: Song; inSetlist: boolean; onOpen: (song: Song) => void; onAdd: (song: Song) => void }) {
+function SongCard({ song, inSetlist, inPractice, onOpen, onAdd, onAddPractice }: { song: Song; inSetlist: boolean; inPractice: boolean; onOpen: (song: Song) => void; onAdd: (song: Song) => void; onAddPractice: (song: Song) => void }) {
   const resourceCount = [song.songUrl, song.lyricsUrl, song.scoreUrl, song.harmonyUrl].filter(Boolean).length
   return (
     <article className="song-card">
@@ -536,10 +587,108 @@ function SongCard({ song, inSetlist, onOpen, onAdd }: { song: Song; inSetlist: b
           {song.scoreUrl ? <CheckCircle2 size={14} aria-hidden="true" /> : <FileText size={14} aria-hidden="true" />}
           {song.scoreUrl ? '已有歌譜' : '待補歌譜'}
         </span>
+        <button type="button" className={inPractice ? 'setlist-action is-added' : 'setlist-action'} onClick={() => onAddPractice(song)} aria-label={inPractice ? `開啟 ${song.title} 的個人練習` : `將 ${song.title} 加入個人練習`}>
+          {inPractice ? <BookMarked size={16} /> : <Plus size={16} />}
+          <span>{inPractice ? '練習中' : '加入練習'}</span>
+        </button>
         <button type="button" className={inSetlist ? 'setlist-action is-added' : 'setlist-action'} onClick={() => onAdd(song)} disabled={inSetlist} aria-label={inSetlist ? `${song.title} 已在歌單` : `將 ${song.title} 加入歌單`}>
           {inSetlist ? <Check size={16} /> : <Plus size={16} />}
           <span>{inSetlist ? '已加入' : '加入歌單'}</span>
         </button>
+      </div>
+    </article>
+  )
+}
+
+const practiceStatusLabels: Record<PracticeStatus, string> = {
+  not_started: '未開始',
+  practicing: '練習中',
+  familiar: '已熟悉',
+}
+
+function PracticeView({ state, onBrowse, onOpen, onOpenLive }: { state: ReturnType<typeof usePractice>; onBrowse: () => void; onOpen: (song: Song) => void; onOpenLive: (song: Song) => void }) {
+  const [filter, setFilter] = useState<'all' | PracticeStatus>('all')
+  const entries = state.entries
+    .map((entry) => ({ entry, song: songs.find((song) => song.id === entry.songId) }))
+    .filter((item): item is { entry: PracticeEntry; song: Song } => Boolean(item.song))
+  const visibleEntries = filter === 'all' ? entries : entries.filter(({ entry }) => entry.status === filter)
+  const counts = {
+    practicing: entries.filter(({ entry }) => entry.status === 'practicing').length,
+    familiar: entries.filter(({ entry }) => entry.status === 'familiar').length,
+  }
+
+  return (
+    <section className="page practice-page" aria-labelledby="practice-title">
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow">PERSONAL PRACTICE</p>
+          <h2 id="practice-title">個人練習</h2>
+          <p>這裡的曲目、Key、進度與備註只有你的 Google 帳號看得到。</p>
+        </div>
+        <div className="summary-row" aria-label="個人練習摘要">
+          <SummaryMetric value={entries.length} label="曲目" />
+          <SummaryMetric value={counts.practicing} label="練習中" />
+          <SummaryMetric value={counts.familiar} label="已熟悉" />
+        </div>
+      </div>
+
+      <div className="practice-toolbar">
+        <div className="filter-group" aria-label="練習進度篩選">
+          {([['all', '全部'], ['not_started', '未開始'], ['practicing', '練習中'], ['familiar', '已熟悉']] as const).map(([value, label]) => (
+            <button key={value} type="button" className={filter === value ? 'chip is-active' : 'chip'} onClick={() => setFilter(value)} aria-pressed={filter === value}>{label}</button>
+          ))}
+        </div>
+        <p className="practice-sync" aria-live="polite">{state.loading ? '正在同步…' : state.message}</p>
+      </div>
+
+      {visibleEntries.length > 0 ? (
+        <div className="practice-list">
+          {visibleEntries.map(({ song, entry }) => (
+            <PracticeSongCard key={song.id} song={song} entry={entry} saving={state.savingSongId === song.id} onSave={state.upsert} onRemove={state.remove} onOpen={() => onOpen(song)} onOpenLive={() => onOpenLive(song)} />
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state practice-empty">
+          <BookMarked size={32} aria-hidden="true" />
+          <h3>{entries.length === 0 ? '還沒有個人練習曲目' : '這個分類目前沒有曲目'}</h3>
+          <p>{entries.length === 0 ? '從樂譜庫加入歌曲後，就能記錄練習 Key、進度與私人備註。' : '切換其他進度，或到樂譜庫加入新歌曲。'}</p>
+          <button type="button" className="button button-primary" onClick={onBrowse}><LibraryBig size={18} aria-hidden="true" />前往樂譜庫</button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function PracticeSongCard({ song, entry, saving, onSave, onRemove, onOpen, onOpenLive }: { song: Song; entry: PracticeEntry; saving: boolean; onSave: (entry: Omit<PracticeEntry, 'updatedAt'>) => Promise<boolean>; onRemove: (songId: string) => Promise<boolean>; onOpen: () => void; onOpenLive: () => void }) {
+  const [notes, setNotes] = useState(entry.notes)
+  useEffect(() => setNotes(entry.notes), [entry.notes])
+
+  const save = (changes: Partial<Omit<PracticeEntry, 'updatedAt'>>) => onSave({
+    songId: entry.songId,
+    status: entry.status,
+    practiceKey: entry.practiceKey,
+    notes,
+    ...changes,
+  })
+
+  return (
+    <article className="practice-card">
+      <div className="practice-card-heading">
+        <button type="button" onClick={onOpen} className="practice-song-title">
+          <span className="song-cover" aria-hidden="true"><FileMusic size={20} /></span>
+          <span><strong>{song.title}</strong><small>{song.source || song.category}</small></span>
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
+        <button type="button" className="icon-button danger-button" onClick={() => onRemove(song.id)} disabled={saving} aria-label={`從個人練習移除 ${song.title}`}><Trash2 size={18} /></button>
+      </div>
+      <div className="practice-fields">
+        <label><span>進度</span><select value={entry.status} onChange={(event) => void save({ status: event.target.value as PracticeStatus })} disabled={saving}>{Object.entries(practiceStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label><span>練習 Key</span><select value={entry.practiceKey} onChange={(event) => void save({ practiceKey: event.target.value })} disabled={saving}><option value="">未設定</option>{chromaticKeys.map((key) => <option key={key}>{key}</option>)}</select></label>
+        <label className="practice-notes"><span>私人備註</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} placeholder="例如：副歌轉折、需要加強的段落…" /></label>
+      </div>
+      <div className="practice-actions">
+        <button type="button" className="button button-secondary" onClick={onOpenLive}><Presentation size={18} aria-hidden="true" />現場模式</button>
+        <button type="button" className="button button-primary" onClick={() => void save({ notes })} disabled={saving || notes === entry.notes}>{saving ? <LoaderCircle size={18} className="spin" aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}{saving ? '儲存中' : notes === entry.notes ? '已儲存' : '儲存備註'}</button>
       </div>
     </article>
   )
@@ -808,14 +957,14 @@ function AdminView({ auth, share }: { auth: AuthState; share: ShareAccessState }
         <div>
           <p className="eyebrow">ADMIN</p>
           <h2 id="admin-title">管理中心</h2>
-          <p>{share.active && !auth.user ? '你正透過分享網址上傳，不需要登入。' : '管理者使用 Google 登入，也可建立免登入的分享上傳網址。'}</p>
+          <p>{share.active ? '你正透過管理者提供的分享網址上傳，Google 登入已確認身分。' : '管理者可建立分享上傳網址，持有人登入 Google 後即可協助上傳。'}</p>
         </div>
         <span className="admin-badge">{share.active && !auth.user ? <CloudUpload size={18} aria-hidden="true" /> : <ShieldCheck size={18} aria-hidden="true" />}{share.active && !auth.user ? '分享上傳' : '管理中心'}</span>
       </div>
 
       <div className="admin-stats">
         <AdminMetric icon={Users} value={auth.user ? '1' : '0'} label="管理者登入" helper={auth.user ? auth.user.name : '目前未登入'} />
-        <AdminMetric icon={UserCheck} value={canUpload ? '可上傳' : '—'} label="目前權限" helper={auth.user?.canUpload ? '管理者' : share.active ? '分享網址持有者' : '需要登入或分享網址'} />
+        <AdminMetric icon={UserCheck} value={canUpload ? '可上傳' : '—'} label="目前權限" helper={auth.user?.canUpload ? '管理者' : share.active ? '已登入的分享網址持有者' : '需要管理者或分享網址'} />
         <AdminMetric icon={HardDrive} value={formatFileSize(uploads.reduce((total, file) => total + file.size, 0))} label="私有儲存" helper={`${uploads.length} 份已上傳檔案`} />
       </div>
 
@@ -936,7 +1085,7 @@ function MobileNav({ view, setView, setlistCount }: { view: ViewName; setView: (
   )
 }
 
-function SongDialog({ song, onClose, onAdd, onOpenLive, inSetlist }: { song: Song | null; onClose: () => void; onAdd: (song: Song) => void; onOpenLive: (song: Song) => void; inSetlist: boolean }) {
+function SongDialog({ song, onClose, onAdd, onAddPractice, onOpenLive, inSetlist, inPractice }: { song: Song | null; onClose: () => void; onAdd: (song: Song) => void; onAddPractice: (song: Song) => void; onOpenLive: (song: Song) => void; inSetlist: boolean; inPractice: boolean }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const chordSheet = song ? getChordSheet(song.id) : null
 
@@ -986,7 +1135,10 @@ function SongDialog({ song, onClose, onAdd, onOpenLive, inSetlist }: { song: Son
             <div><h3>排練筆記</h3><p>正式版可加入全團共用筆記與個人提示。</p></div>
           </section>
 
-          <button type="button" className="button button-primary button-full" onClick={() => onAdd(song)} disabled={inSetlist}>{inSetlist ? <Check size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}{inSetlist ? '已加入本週歌單' : '加入本週歌單'}</button>
+          <div className="dialog-primary-actions">
+            <button type="button" className="button button-secondary" onClick={() => onAddPractice(song)}>{inPractice ? <BookMarked size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}{inPractice ? '開啟個人練習' : '加入個人練習'}</button>
+            <button type="button" className="button button-primary" onClick={() => onAdd(song)} disabled={inSetlist}>{inSetlist ? <Check size={18} aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}{inSetlist ? '已加入本週歌單' : '加入本週歌單'}</button>
+          </div>
         </div>
       )}
     </dialog>

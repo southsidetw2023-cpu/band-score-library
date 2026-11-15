@@ -17,4 +17,4 @@ export interface Song {
   tags: string[]
 }
 
-export type ViewName = 'library' | 'setlist' | 'admin'
+export type ViewName = 'library' | 'setlist' | 'practice' | 'admin'

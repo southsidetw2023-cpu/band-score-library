@@ -9,6 +9,14 @@ function assert(condition, message) {
   if (!condition) throw new Error(message)
 }
 
+async function authenticatePage(page) {
+  await page.addInitScript(() => window.sessionStorage.setItem('ensemble-google-credential', 'test-credential'))
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ user: { id: 'test-user', email: 'member@example.com', name: '測試團員', picture: '', canUpload: false } }),
+  }))
+}
+
 async function assertRhythmRowsInline(page, label) {
   const rows = page.locator('.performance-sheet .rhythm-row')
   assert((await rows.count()) === 4, `${label}應有 4 列單行節奏和弦`)
@@ -25,6 +33,7 @@ await mkdir('artifacts', { recursive: true })
 
 try {
   const desktop = await browser.newPage({ viewport: { width: 1440, height: 1100 } })
+  await authenticatePage(desktop)
   await desktop.goto(baseUrl, { waitUntil: 'load' })
   assert(await desktop.getByRole('heading', { name: '全部樂譜' }).isVisible(), '桌面版未顯示樂譜庫標題')
   assert((await desktop.locator('.song-card').count()) === 30, '桌面版應先顯示 30 首，避免一次渲染 207 張卡片')
@@ -148,17 +157,18 @@ try {
   await desktop.getByRole('button', { name: /管理中心/ }).first().click()
   assert(await desktop.getByRole('heading', { name: '管理中心' }).isVisible(), '管理中心未開啟')
   assert(await desktop.getByText('目前沒有上傳權限').isVisible(), '未登入且沒有分享網址時沒有鎖定檔案上傳')
-  assert(await desktop.getByText('Google 登入尚未完成正式環境設定。').first().isVisible(), '未設定 Google Client ID 時沒有清楚提示')
   assert(await desktop.getByText('取得上傳權限後顯示紀錄。').isVisible(), '未授權時沒有隱藏上傳紀錄')
 
   const shared = await browser.newPage({ viewport: { width: 1100, height: 900 } })
+  await authenticatePage(shared)
   await shared.goto(`${baseUrl}#upload=${'a'.repeat(43)}`, { waitUntil: 'load' })
-  assert(await shared.getByText('你正透過分享網址上傳，不需要登入。').isVisible(), '分享網址沒有直接開啟免登入上傳模式')
+  assert(await shared.getByText('你正透過管理者提供的分享網址上傳，Google 登入已確認身分。').isVisible(), '分享網址沒有顯示已登入的分享上傳模式')
   assert(await shared.getByText('選擇檔案，或拖曳到這裡').isVisible(), '分享網址持有者沒有顯示上傳表單')
   assert(!shared.url().includes('#upload='), '分享憑證沒有從網址列移除')
   await shared.close()
 
   const mobile = await browser.newPage({ viewport: { width: 375, height: 812 }, isMobile: true, reducedMotion: 'reduce' })
+  await authenticatePage(mobile)
   await mobile.goto(baseUrl, { waitUntil: 'load' })
   assert(await mobile.getByRole('heading', { name: '全部樂譜' }).isVisible(), '手機版未顯示樂譜庫標題')
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
@@ -292,6 +302,7 @@ try {
 
   for (const viewport of [{ width: 375, height: 812 }, { width: 844, height: 390 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }]) {
     const page = await browser.newPage({ viewport, isMobile: viewport.width < 900 })
+    await authenticatePage(page)
     await page.goto(baseUrl, { waitUntil: 'load' })
     const hasOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
     assert(!hasOverflow, `${viewport.width}×${viewport.height} 出現水平捲動`)

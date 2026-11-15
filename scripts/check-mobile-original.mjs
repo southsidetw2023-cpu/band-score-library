@@ -12,7 +12,12 @@ try {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, serviceWorkers: 'block' })
   const page = await context.newPage()
   page.setDefaultTimeout(15_000)
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ user: { id: 'test-user', email: 'member@example.com', name: '測試團員', picture: '', canUpload: false } }),
+  }))
   await page.addInitScript(() => {
+    window.sessionStorage.setItem('ensemble-google-credential', 'test-credential')
     window.localStorage.removeItem('ensemble-live-original-scale')
     window.localStorage.setItem('ensemble-live-score-view', 'live')
   })

@@ -29,6 +29,7 @@ export interface R2BucketLike {
 }
 
 export interface GoogleUser {
+  id: string
   email: string
   name: string
   picture: string
@@ -49,6 +50,7 @@ interface GoogleTokenInfo {
   iss?: string
   name?: string
   picture?: string
+  sub?: string
 }
 
 interface GoogleJwtHeader {
@@ -128,12 +130,13 @@ export async function authenticate(request: Request, env: Env): Promise<GoogleUs
   const token = await verifyGoogleToken(credential)
   const validIssuer = token.iss === 'accounts.google.com' || token.iss === 'https://accounts.google.com'
   const expiry = Number(token.exp ?? 0)
-  if (!validIssuer || token.aud !== env.GOOGLE_CLIENT_ID || token.email_verified !== true || expiry * 1000 <= Date.now() || !token.email) {
+  if (!validIssuer || token.aud !== env.GOOGLE_CLIENT_ID || token.email_verified !== true || expiry * 1000 <= Date.now() || !token.email || !token.sub) {
     throw new AuthError('Google 帳號驗證失敗，請重新登入。')
   }
 
   const email = token.email.toLocaleLowerCase()
   return {
+    id: await sha256(`google:${token.sub}`),
     email,
     name: token.name?.trim() || email,
     picture: token.picture ?? '',

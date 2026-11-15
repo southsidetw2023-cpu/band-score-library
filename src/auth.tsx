@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 export interface AuthUser {
+  id: string
   email: string
   name: string
   picture: string
