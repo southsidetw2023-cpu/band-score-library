@@ -52,6 +52,12 @@ try {
   const search = page.getByPlaceholder('搜尋歌名、出處、語言或年份')
   await search.fill('Jesus Christ alone')
   await page.waitForFunction(() => document.querySelectorAll('.song-card').length === 1)
+  await page.getByRole('button', { name: '將 Jesus Christ alone 加入歌單' }).click()
+  await page.locator('.mobile-nav').getByRole('button', { name: /本週歌單/ }).click()
+  assert(await page.getByText('Jesus Christ alone', { exact: true }).isVisible(), '一般登入帳號無法加入本週歌單')
+  await page.getByRole('button', { name: '從歌單移除 Jesus Christ alone' }).click()
+  assert(!(await page.getByText('Jesus Christ alone', { exact: true }).isVisible()), '一般登入帳號無法移除本週歌單歌曲')
+  await page.locator('.mobile-nav').getByRole('button', { name: '樂譜庫', exact: true }).click()
   await page.getByRole('button', { name: /將 Jesus Christ alone 加入個人練習/ }).click()
   await page.getByRole('heading', { name: '個人練習' }).waitFor()
   assert(await page.getByText('Jesus Christ alone', { exact: true }).isVisible(), '加入後個人練習沒有顯示歌曲')
@@ -66,7 +72,7 @@ try {
   await page.reload({ waitUntil: 'load' })
   await page.getByRole('button', { name: /個人練習/ }).first().click()
   assert(await page.locator('.practice-fields textarea').inputValue() === '副歌需要再加強', '重新載入後個人練習備註未保留')
-  console.log('帳號功能驗證完成：登入閘門、一般帳號直接上傳、四分頁、375px 手機版、個人練習同步皆通過。')
+  console.log('帳號功能驗證完成：登入閘門、一般帳號直接上傳與編輯本週歌單、四分頁、375px 手機版、個人練習同步皆通過。')
 } finally {
   await browser.close()
 }

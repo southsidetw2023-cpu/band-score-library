@@ -146,7 +146,7 @@ function App() {
   const pendingSetlistWritesRef = useRef(0)
   const holdRemoteSetlistUntilRef = useRef(0)
   const setlistWriteQueueRef = useRef<Promise<void>>(Promise.resolve())
-  const canEditSetlist = Boolean(auth.user?.isAdmin || share.active)
+  const canEditSetlist = Boolean(auth.user || share.active)
 
   useEffect(() => {
     setlistIdsRef.current = setlistIds

@@ -1,4 +1,4 @@
-import { AuthError, authenticateUploadAccess, authErrorResponse, json, type Env } from '../_shared/auth'
+import { AuthError, authenticateFileAccess, authErrorResponse, json, type Env } from '../_shared/auth'
 
 interface Context {
   request: Request
@@ -48,7 +48,7 @@ export async function onRequestGet({ env }: Context) {
 
 export async function onRequestPut({ request, env }: Context) {
   try {
-    const access = await authenticateUploadAccess(request, env)
+    const access = await authenticateFileAccess(request, env)
     const payload = await request.json() as { ids?: unknown }
     if (!Array.isArray(payload.ids)) return json({ error: '歌單格式無效。' }, 400)
 
