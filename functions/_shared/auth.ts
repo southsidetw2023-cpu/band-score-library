@@ -34,10 +34,11 @@ export interface GoogleUser {
   name: string
   picture: string
   canUpload: boolean
+  isAdmin: boolean
 }
 
 export interface UploadAccess {
-  kind: 'admin' | 'share'
+  kind: 'admin' | 'member' | 'share'
   user: GoogleUser | null
   uploadedBy: string
 }
@@ -135,12 +136,14 @@ export async function authenticate(request: Request, env: Env): Promise<GoogleUs
   }
 
   const email = token.email.toLocaleLowerCase()
+  const isAdmin = allowedEmails(env).has(email)
   return {
     id: await sha256(`google:${token.sub}`),
     email,
     name: token.name?.trim() || email,
     picture: token.picture ?? '',
-    canUpload: allowedEmails(env).has(email),
+    canUpload: true,
+    isAdmin,
   }
 }
 
@@ -173,8 +176,16 @@ async function authenticateShare(request: Request, env: Env): Promise<UploadAcce
 export async function authenticateUploadAccess(request: Request, env: Env): Promise<UploadAccess> {
   if (request.headers.get('Authorization')) {
     const user = await authenticate(request, env)
-    if (!user.canUpload) throw new AuthError('這個帳號尚未取得管理者權限。', 403)
+    if (!user.isAdmin) throw new AuthError('這個帳號尚未取得管理者權限。', 403)
     return { kind: 'admin', user, uploadedBy: user.email }
+  }
+  return authenticateShare(request, env)
+}
+
+export async function authenticateFileAccess(request: Request, env: Env): Promise<UploadAccess> {
+  if (request.headers.get('Authorization')) {
+    const user = await authenticate(request, env)
+    return { kind: user.isAdmin ? 'admin' : 'member', user, uploadedBy: user.email }
   }
   return authenticateShare(request, env)
 }

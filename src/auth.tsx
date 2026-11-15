@@ -6,6 +6,7 @@ export interface AuthUser {
   name: string
   picture: string
   canUpload: boolean
+  isAdmin: boolean
 }
 
 export interface AuthState {

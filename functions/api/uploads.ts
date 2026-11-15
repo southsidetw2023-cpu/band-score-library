@@ -1,4 +1,4 @@
-import { AuthError, authenticateUploadAccess, authErrorResponse, json, type Env, type R2ObjectLike } from '../_shared/auth'
+import { AuthError, authenticateFileAccess, authErrorResponse, json, type Env, type R2ObjectLike } from '../_shared/auth'
 
 interface Context {
   request: Request
@@ -38,7 +38,7 @@ function serializeObject(object: R2ObjectLike) {
 
 export async function onRequestGet({ request, env }: Context) {
   try {
-    const access = await authenticateUploadAccess(request, env)
+    const access = await authenticateFileAccess(request, env)
     const bucket = requireBucket(env)
     const key = new URL(request.url).searchParams.get('key')
 
@@ -77,7 +77,7 @@ export async function onRequestGet({ request, env }: Context) {
 
 export async function onRequestPost({ request, env }: Context) {
   try {
-    const access = await authenticateUploadAccess(request, env)
+    const access = await authenticateFileAccess(request, env)
     const bucket = requireBucket(env)
     const form = await request.formData()
     const file = form.get('file')

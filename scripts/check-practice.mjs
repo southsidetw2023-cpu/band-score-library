@@ -24,7 +24,7 @@ try {
   await page.addInitScript(() => window.sessionStorage.setItem('ensemble-google-credential', 'test-credential'))
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ user: { id: 'test-user', email: 'member@example.com', name: '測試團員', picture: '', canUpload: false } }),
+    body: JSON.stringify({ user: { id: 'test-user', email: 'member@example.com', name: '測試團員', picture: '', canUpload: true, isAdmin: false } }),
   }))
   await page.route('**/api/practice*', async (route) => {
     const method = route.request().method()
@@ -44,6 +44,10 @@ try {
   assert((await page.locator('.mobile-nav button').count()) === 4, '手機底部導覽不是四個分頁')
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
   assert(!overflow, '375px 手機版出現水平溢位')
+  await page.getByRole('button', { name: /管理中心/ }).first().click()
+  assert(await page.getByText('Google 帳號已驗證，可直接上傳，不需要分享網址。').isVisible(), '一般 Google 帳號沒有顯示直接上傳權限')
+  assert(await page.getByText('選擇檔案，或拖曳到這裡').isVisible(), '一般 Google 帳號沒有顯示檔案上傳表單')
+  await page.locator('.mobile-nav').getByRole('button', { name: '樂譜庫', exact: true }).click()
 
   const search = page.getByPlaceholder('搜尋歌名、出處、語言或年份')
   await search.fill('Jesus Christ alone')
@@ -62,7 +66,7 @@ try {
   await page.reload({ waitUntil: 'load' })
   await page.getByRole('button', { name: /個人練習/ }).first().click()
   assert(await page.locator('.practice-fields textarea').inputValue() === '副歌需要再加強', '重新載入後個人練習備註未保留')
-  console.log('個人練習驗證完成：登入閘門、四分頁、375px 手機版、新增、同步與重新載入皆通過。')
+  console.log('帳號功能驗證完成：登入閘門、一般帳號直接上傳、四分頁、375px 手機版、個人練習同步皆通過。')
 } finally {
   await browser.close()
 }

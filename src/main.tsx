@@ -146,7 +146,7 @@ function App() {
   const pendingSetlistWritesRef = useRef(0)
   const holdRemoteSetlistUntilRef = useRef(0)
   const setlistWriteQueueRef = useRef<Promise<void>>(Promise.resolve())
-  const canEditSetlist = Boolean(auth.user?.canUpload || share.active)
+  const canEditSetlist = Boolean(auth.user?.isAdmin || share.active)
 
   useEffect(() => {
     setlistIdsRef.current = setlistIds
@@ -440,7 +440,7 @@ function Topbar({ setView, auth, share }: { setView: (view: ViewName) => void; a
         {auth.user ? (
           <button type="button" className="profile-button" onClick={auth.signOut} aria-label={`登出 ${auth.user.name}`}>
             <span className="profile-icon">{auth.user.picture ? <img src={auth.user.picture} alt="" referrerPolicy="no-referrer" /> : <CircleUserRound size={21} aria-hidden="true" />}</span>
-            <span><strong>{auth.user.name}</strong><small>{auth.user.canUpload ? '管理者 · 點此登出' : '團員 · 點此登出'}</small></span>
+            <span><strong>{auth.user.name}</strong><small>{auth.user.isAdmin ? '管理者 · 點此登出' : '團員 · 點此登出'}</small></span>
             <LogOut size={16} aria-hidden="true" />
           </button>
         ) : share.active ? (
@@ -932,7 +932,7 @@ function AdminView({ auth, share }: { auth: AuthState; share: ShareAccessState }
   }
 
   async function createShareUrl() {
-    if (!auth.credential || !auth.user?.canUpload) return
+    if (!auth.credential || !auth.user?.isAdmin) return
     setShareState('creating')
     setUploadError('')
     try {
@@ -957,14 +957,14 @@ function AdminView({ auth, share }: { auth: AuthState; share: ShareAccessState }
         <div>
           <p className="eyebrow">ADMIN</p>
           <h2 id="admin-title">管理中心</h2>
-          <p>{share.active ? '你正透過管理者提供的分享網址上傳，Google 登入已確認身分。' : '管理者可建立分享上傳網址，持有人登入 Google 後即可協助上傳。'}</p>
+          <p>{share.active ? 'Google 登入已確認身分，可直接上傳樂譜。' : '任何已登入的 Google 帳號都能直接上傳，不需要分享網址。'}</p>
         </div>
         <span className="admin-badge">{share.active && !auth.user ? <CloudUpload size={18} aria-hidden="true" /> : <ShieldCheck size={18} aria-hidden="true" />}{share.active && !auth.user ? '分享上傳' : '管理中心'}</span>
       </div>
 
       <div className="admin-stats">
         <AdminMetric icon={Users} value={auth.user ? '1' : '0'} label="管理者登入" helper={auth.user ? auth.user.name : '目前未登入'} />
-        <AdminMetric icon={UserCheck} value={canUpload ? '可上傳' : '—'} label="目前權限" helper={auth.user?.canUpload ? '管理者' : share.active ? '已登入的分享網址持有者' : '需要管理者或分享網址'} />
+        <AdminMetric icon={UserCheck} value={canUpload ? '可上傳' : '—'} label="目前權限" helper={auth.user?.isAdmin ? '管理者' : auth.user ? 'Google 帳號已驗證' : '需要登入'} />
         <AdminMetric icon={HardDrive} value={formatFileSize(uploads.reduce((total, file) => total + file.size, 0))} label="私有儲存" helper={`${uploads.length} 份已上傳檔案`} />
       </div>
 
@@ -980,7 +980,7 @@ function AdminView({ auth, share }: { auth: AuthState; share: ShareAccessState }
             <div className="signed-in-user">
               <span className="profile-icon">{auth.user.picture ? <img src={auth.user.picture} alt="" referrerPolicy="no-referrer" /> : <CircleUserRound size={21} aria-hidden="true" />}</span>
               <span><strong>{auth.user.name}</strong><small>{auth.user.email}</small></span>
-              <span className={auth.user.canUpload ? 'status-pill is-complete' : 'status-pill is-missing'}>{auth.user.canUpload ? <CheckCircle2 size={14} aria-hidden="true" /> : <LockKeyhole size={14} aria-hidden="true" />}{auth.user.canUpload ? '管理者' : '團員'}</span>
+              <span className="status-pill is-complete"><CheckCircle2 size={14} aria-hidden="true" />{auth.user.isAdmin ? '管理者' : '可上傳'}</span>
               <button type="button" className="button button-secondary button-full" onClick={auth.signOut}><LogOut size={17} aria-hidden="true" />登出</button>
             </div>
           ) : (
@@ -995,9 +995,9 @@ function AdminView({ auth, share }: { auth: AuthState; share: ShareAccessState }
         <section className="admin-card">
           <div className="card-heading">
             <span className="card-icon"><Users size={21} aria-hidden="true" /></span>
-            <div><h3>分享上傳</h3><p>有網址的人不需登入即可新增檔案</p></div>
+            <div><h3>上傳權限</h3><p>Google 登入後即可新增檔案</p></div>
           </div>
-          {auth.user?.canUpload ? (
+          {auth.user?.isAdmin ? (
             <div className="share-controls">
               <button type="button" className="button button-primary button-full" onClick={createShareUrl} disabled={shareState === 'creating'}>
                 {shareState === 'creating' ? <LoaderCircle size={18} className="spin" aria-hidden="true" /> : <ExternalLink size={18} aria-hidden="true" />}
@@ -1011,7 +1011,7 @@ function AdminView({ auth, share }: { auth: AuthState; share: ShareAccessState }
               <button type="button" className="button button-secondary button-full" onClick={share.clear}>離開分享上傳</button>
             </div>
           ) : (
-            <p className="permission-note"><LockKeyhole size={18} aria-hidden="true" />請由管理者登入，或使用管理者提供的分享網址。</p>
+            <p className="permission-note"><CheckCircle2 size={18} aria-hidden="true" />Google 帳號已驗證，可直接上傳，不需要分享網址。</p>
           )}
         </section>
 
@@ -1021,7 +1021,7 @@ function AdminView({ auth, share }: { auth: AuthState; share: ShareAccessState }
             <div><h3>新增檔案</h3><p>支援 PDF、JPG、PNG，單檔上限 20 MB</p></div>
           </div>
           {!canUpload ? (
-            <div className="locked-upload"><LockKeyhole size={28} aria-hidden="true" /><strong>目前沒有上傳權限</strong><span>請使用管理者提供的分享網址，或由管理者登入。</span></div>
+            <div className="locked-upload"><LockKeyhole size={28} aria-hidden="true" /><strong>目前沒有上傳權限</strong><span>請先使用 Google 帳號登入。</span></div>
           ) : (
             <form className="upload-form" onSubmit={uploadFile}>
               <input ref={fileInputRef} className="sr-only" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => selectFile(event.target.files?.[0])} />

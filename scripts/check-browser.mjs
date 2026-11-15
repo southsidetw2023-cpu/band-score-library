@@ -13,7 +13,7 @@ async function authenticatePage(page) {
   await page.addInitScript(() => window.sessionStorage.setItem('ensemble-google-credential', 'test-credential'))
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ user: { id: 'test-user', email: 'member@example.com', name: '測試團員', picture: '', canUpload: false } }),
+    body: JSON.stringify({ user: { id: 'test-user', email: 'member@example.com', name: '測試團員', picture: '', canUpload: true, isAdmin: false } }),
   }))
 }
 
@@ -156,8 +156,8 @@ try {
   await search.fill('')
   await desktop.getByRole('button', { name: /管理中心/ }).first().click()
   assert(await desktop.getByRole('heading', { name: '管理中心' }).isVisible(), '管理中心未開啟')
-  assert(await desktop.getByText('目前沒有上傳權限').isVisible(), '未登入且沒有分享網址時沒有鎖定檔案上傳')
-  assert(await desktop.getByText('取得上傳權限後顯示紀錄。').isVisible(), '未授權時沒有隱藏上傳紀錄')
+  assert(await desktop.getByText('Google 帳號已驗證，可直接上傳，不需要分享網址。').isVisible(), '一般 Google 帳號沒有取得直接上傳權限')
+  assert(await desktop.getByText('選擇檔案，或拖曳到這裡').isVisible(), '一般 Google 帳號沒有顯示上傳表單')
 
   const shared = await browser.newPage({ viewport: { width: 1100, height: 900 } })
   await authenticatePage(shared)
